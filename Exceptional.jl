@@ -9,26 +9,27 @@ exception_handler_dicts::Vector = []
 chosen_restart = nothing
 restart_handler_dicts::Vector = []
 
-function handling(func, handlers...)
+function handling(func, handlers...) #TODO: Not use try-catch
     handler_dict = Dict(handlers)
     push!(exception_handler_dicts, handler_dict)
-
-    try
-        func() # or func(args...)
-    catch e
-        if typeof(e) in keys(handler_dict)
-            handler_dict[typeof(e)](e)
-        else #exception is not treated in handlers
-            rethrow()
-        end #TODO: Case of signals
-    finally
-        pop!(exception_handler_dicts)
-    end
+    func()
+    pop!(exception_handler_dicts)
 end
 
-reciprocal(x) = x == 0 ? throw(DivisionByZero()) : 1/x
+reciprocal(x) = x == 0 ? Base.error(DivisionByZero()) : 1/x
+
 
 struct DivisionByZero <: Exception end
+
+handling(DivisionByZero => (c)->println("I saw a division by zero")) do
+    reciprocal(0)
+end
+
+handling(DivisionByZero => (c)->println("I saw it too")) do
+    handling(DivisionByZero => (c)->println("I saw a division by zero")) do
+        reciprocal(0)
+    end
+end
 
 struct EscapedException <: Exception end
 
@@ -50,48 +51,63 @@ end
 
 
 function with_restart(func, restarts...)
-    try
-        func()
-    catch e
-        if typeof(e) != Condition
-            rethrow()
-        else
-            for handler_dict in Iterators.reverse(exception_handler_dicts)
-                if typeof(e) in keys(handler_dict)
-                    handler_dict[typeof(e)](e)()
-                    if !isnothing(chosen_restart)
-                        # TODO
-                        break
-                    end
-                end
+    restart_handler = Dict(restarts)
+    push!(restart_handler_dicts, restart_handler)
+    func()
+    for handler_dict in Iterators.reverse(exception_handler_dicts)
+        if typeof(e) in keys(handler_dict)
+            handler_dict[typeof(e)](e)
+            if !isnothing(chosen_restart)
+                # TODO
+                break
             end
-            if isnothing(chosen_restart)
-                if (e.is_error)
-                    throw(e.exception)
-                end
-            end
+        end
+    end
+    if isnothing(chosen_restart)
+        if (e.is_error)
+            throw(e.exception)
+        end
+    end
         end
     end
 end
 
 
-signal(exception::Exception) = throw(Condition(false, exception))
-Base.error(exception::Exception) = throw(Condition(true, exception))
+function signal(exception::Exception)
+    treated = false
+    for handler_dict in Iterators.reverse(exception_handler_dicts)
+        if typeof(exception) in keys(handler_dict)
+            handler_dict[typeof(exception)](exception)
+    
+            break #TODO: check if needed    
+        end
+    end
+    return treated
+end
 
-mystery(n) =
-    1 +
-    to_escape() do outer
-        1 +
-        to_escape() do inner
-            1 +
-            if n == 0
-                inner(1)
-            elseif n == 1
-                outer(1)
-            else
-                1
+function Base.error(exception::Exception)
+    if !signal(exception)
+        throw(exception)
+    end
+end
+
+
+struct LineEndLimit <: Exception end
+
+print_line(str, line_end=20) =
+let col = 0 
+    for c in str print(c)
+        col += 1
+        if col == line_end
+            Base.error(LineEndLimit())
+            col = 0
         end
     end
 end
+
+handling(LineEndLimit => (c)->println()) do
+    print_line("Hi, everybody! How are you feeling today?") 
+end
+
 
 end
