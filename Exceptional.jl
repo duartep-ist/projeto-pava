@@ -1,34 +1,14 @@
 module Exceptional
 
-struct Condition
-    is_error::Bool
-    exception::Exception
-end
-
 exception_handler_dicts::Vector = []
-chosen_restart = nothing
 restart_handler_dicts::Vector = []
 
-function handling(func, handlers...) #TODO: Not use try-catch
+function handling(func, handlers...)
     handler_dict = Dict(handlers)
     push!(exception_handler_dicts, handler_dict)
     func()
+    # TODO perguntar ao stor se podemos usar try finally aqui
     pop!(exception_handler_dicts)
-end
-
-reciprocal(x) = x == 0 ? Base.error(DivisionByZero()) : 1/x
-
-
-struct DivisionByZero <: Exception end
-
-handling(DivisionByZero => (c)->println("I saw a division by zero")) do
-    reciprocal(0)
-end
-
-handling(DivisionByZero => (c)->println("I saw it too")) do
-    handling(DivisionByZero => (c)->println("I saw a division by zero")) do
-        reciprocal(0)
-    end
 end
 
 struct EscapedException <: Exception end
@@ -40,7 +20,7 @@ function to_escape(func)
     ret_val = nothing
     try
         func((ret) -> (did_escape = true; ret_val = ret; throw(escaped)))
-    catch
+    catch # TODO checkar se temos de ter id único para o escaped
         if did_escape
             return ret_val
         else
@@ -49,40 +29,41 @@ function to_escape(func)
     end
 end
 
-
+# TODO perguntar ao stor se podemos usar try catch aqui
 function with_restart(func, restarts...)
     restart_handler = Dict(restarts)
     push!(restart_handler_dicts, restart_handler)
     func()
-    for handler_dict in Iterators.reverse(exception_handler_dicts)
-        if typeof(e) in keys(handler_dict)
-            handler_dict[typeof(e)](e)
-            if !isnothing(chosen_restart)
-                # TODO
-                break
+    pop!(restart_handler_dicts)
+end
+
+function available_restart(name)
+    for restart_dict in Iterators.reverse(restart_handler_dicts)
+            if name in keys(restart_dict)
+                return true
             end
         end
-    end
-    if isnothing(chosen_restart)
-        if (e.is_error)
-            throw(e.exception)
-        end
-    end
+    return false
+end
+
+function invoke_restart(name, args...)
+    for restart_dict in Iterators.reverse(restart_handler_dicts)
+        if name in keys(restart_dict)
+            restart_dict[name](args)
+            return 
         end
     end
 end
 
-
 function signal(exception::Exception)
-    treated = false
     for handler_dict in Iterators.reverse(exception_handler_dicts)
         if typeof(exception) in keys(handler_dict)
             handler_dict[typeof(exception)](exception)
-    
-            break #TODO: check if needed    
+            # if invoke restart foi chamado
+                # return true
         end
     end
-    return treated
+    return false
 end
 
 function Base.error(exception::Exception)
@@ -91,6 +72,19 @@ function Base.error(exception::Exception)
     end
 end
 
+struct DivisionByZero <: Exception end
+
+reciprocal(x) = x == 0 ? Base.error(DivisionByZero()) : 1/x
+
+handling(DivisionByZero => (c)->println("I saw a division by zero")) do
+    reciprocal(0)
+end
+
+handling(DivisionByZero => (c)->println("I saw it too")) do
+    handling(DivisionByZero => (c)->println("I saw a division by zero")) do
+        reciprocal(0)
+    end
+end
 
 struct LineEndLimit <: Exception end
 
@@ -108,6 +102,5 @@ end
 handling(LineEndLimit => (c)->println()) do
     print_line("Hi, everybody! How are you feeling today?") 
 end
-
 
 end
