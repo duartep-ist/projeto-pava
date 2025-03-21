@@ -1,7 +1,12 @@
 module Exceptional
 
-exception_handler_dicts::Vector = []
-restart_handler_dicts::Vector = []
+struct RestartInfo
+    handler_dict::Dict{Symbol, Function}
+    escape::Function
+end
+
+exception_handler_dicts::Vector{Dict{Any, Function}} = []
+restart_stack::Vector{RestartInfo} = []
 
 function handling(func, handlers...)
     let
@@ -16,21 +21,15 @@ function handling(func, handlers...)
 end
 
 struct EscapedException <: Exception end
+escaped = EscapedException()
 
 function to_escape(func)
     let
         did_escape = false
-        escaped = EscapedException()
         ret_val = nothing
-        try
-            #=
-            esc_func(ret) = 
-                did_escape = true;
-                ret_val = ret;
-                throw(escaped)
-            =#    
+        try 
             func((ret) -> (did_escape = true; ret_val = ret; throw(escaped)))
-        catch # TODO checkar se temos de ter id único para o escaped
+        catch
             if did_escape
                 return ret_val
             else
@@ -42,20 +41,21 @@ end
 
 function with_restart(func, restarts...)
     let
-        restart_handler = Dict(restarts)
-        push!(restart_handler_dicts, restart_handler)
+        restart_handler_dict = Dict(restarts)
         try
-            restart = to_escape(func())
-            
+            to_escape() do escape
+                push!(restart_stack, RestartInfo(restart_handler_dict, escape))
+                func()
+            end
         finally    
-            pop!(restart_handler_dicts)
+            pop!(restart_stack)
         end
     end
 end
 
 function available_restart(name)
-    for restart_dict in Iterators.reverse(restart_handler_dicts)
-            if name in keys(restart_dict)
+    for info in Iterators.reverse(restart_stack)
+            if name in keys(info.handler_dict)
                 return true
             end
         end
@@ -63,10 +63,10 @@ function available_restart(name)
 end
 
 function invoke_restart(name, args...)
-    for restart_dict in Iterators.reverse(restart_handler_dicts)
-        if name in keys(restart_dict)
-            restart_dict[name](args)
-            return 
+    for info in Iterators.reverse(restart_stack)
+        if name in keys(info.handler_dict)
+            info.escape(info.handler_dict[name](args...))
+            return
         end
     end
 end
@@ -84,35 +84,6 @@ function Base.error(exception::Exception)
     throw(exception)
 end
 
-struct DivisionByZero <: Exception end
-
-reciprocal(x) = x == 0 ? Base.error(DivisionByZero()) : 1/x
-
-handling(DivisionByZero => (c)->println("I saw a division by zero")) do
-    reciprocal(0)
-end
-
-handling(DivisionByZero => (c)->println("I saw it too")) do
-    handling(DivisionByZero => (c)->println("I saw a division by zero")) do
-        reciprocal(0)
-    end
-end
-
-struct LineEndLimit <: Exception end
-
-print_line(str, line_end=20) =
-let col = 0 
-    for c in str print(c)
-        col += 1
-        if col == line_end
-            Base.error(LineEndLimit())
-            col = 0
-        end
-    end
-end
-
-handling(LineEndLimit => (c)->println()) do
-    print_line("Hi, everybody! How are you feeling today?") 
-end
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal
 
 end
