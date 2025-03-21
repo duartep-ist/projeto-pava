@@ -4,37 +4,53 @@ exception_handler_dicts::Vector = []
 restart_handler_dicts::Vector = []
 
 function handling(func, handlers...)
-    handler_dict = Dict(handlers)
-    push!(exception_handler_dicts, handler_dict)
-    func()
-    # TODO perguntar ao stor se podemos usar try finally aqui
-    pop!(exception_handler_dicts)
+    let
+        handler_dict = Dict(handlers)
+        push!(exception_handler_dicts, handler_dict)
+        try
+            func()
+        finally
+            pop!(exception_handler_dicts)
+        end
+    end
 end
 
 struct EscapedException <: Exception end
 
 function to_escape(func)
-    # TODO usar let ?
-    did_escape = false
-    escaped = EscapedException()
-    ret_val = nothing
-    try
-        func((ret) -> (did_escape = true; ret_val = ret; throw(escaped)))
-    catch # TODO checkar se temos de ter id único para o escaped
-        if did_escape
-            return ret_val
-        else
-           rethrow()
+    let
+        did_escape = false
+        escaped = EscapedException()
+        ret_val = nothing
+        try
+            #=
+            esc_func(ret) = 
+                did_escape = true;
+                ret_val = ret;
+                throw(escaped)
+            =#    
+            func((ret) -> (did_escape = true; ret_val = ret; throw(escaped)))
+        catch # TODO checkar se temos de ter id único para o escaped
+            if did_escape
+                return ret_val
+            else
+                rethrow()
+            end
         end
     end
 end
 
-# TODO perguntar ao stor se podemos usar try catch aqui
 function with_restart(func, restarts...)
-    restart_handler = Dict(restarts)
-    push!(restart_handler_dicts, restart_handler)
-    func()
-    pop!(restart_handler_dicts)
+    let
+        restart_handler = Dict(restarts)
+        push!(restart_handler_dicts, restart_handler)
+        try
+            restart = to_escape(func())
+            
+        finally    
+            pop!(restart_handler_dicts)
+        end
+    end
 end
 
 function available_restart(name)
@@ -59,17 +75,13 @@ function signal(exception::Exception)
     for handler_dict in Iterators.reverse(exception_handler_dicts)
         if typeof(exception) in keys(handler_dict)
             handler_dict[typeof(exception)](exception)
-            # if invoke restart foi chamado
-                # return true
         end
     end
-    return false
 end
 
 function Base.error(exception::Exception)
-    if !signal(exception)
-        throw(exception)
-    end
+    signal(exception)
+    throw(exception)
 end
 
 struct DivisionByZero <: Exception end
