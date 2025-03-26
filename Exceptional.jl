@@ -24,17 +24,18 @@ struct EscapedException <: Exception end
 escaped = EscapedException()
 
 function to_escape(func)
-    let
-        did_escape = false
-        ret_val = nothing
-        try 
-            func((ret) -> (did_escape = true; ret_val = ret; throw(escaped)))
-        catch
-            if did_escape
-                return ret_val
-            else
-                rethrow()
-            end
+    did_escape = false
+    ret_val = nothing
+    escape(ret::Any) = begin did_escape = true; ret_val = ret; throw(escaped) end
+    escape() = escape(nothing)
+
+    try
+        func(escape)
+    catch
+        if did_escape
+            return ret_val
+        else
+            rethrow()
         end
     end
 end

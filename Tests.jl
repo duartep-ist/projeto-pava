@@ -2,6 +2,9 @@ include("Exceptional.jl")
 using .Exceptional
 using Test
 
+
+# Escaping
+
 mystery(n) =
     1 +
     to_escape() do outer
@@ -22,7 +25,13 @@ end
 @test mystery(1) == 2
 @test mystery(2) == 4
 
-struct DivisionByZero <: Exception end
+
+# Handling
+
+@test handling(() -> 123) == 123
+
+struct DivisionByZero <: Exception
+end
 
 simple_reciprocal(x) = x == 0 ? Base.error(DivisionByZero()) : 1/x
 
@@ -44,19 +53,52 @@ end
 end
 
 
+struct LineEndLimit <: Exception
+end
 
-print_line(str, line_end=20) =
+function print_line(str, signal_func, line_end=20)
+    global line = ""
     let col = 0 
-        for c in str print(c)
+        for c in str
+            line *= c
             col += 1
             if col == line_end
-                Base.error(LineEndLimit())
+                signal_func(LineEndLimit())
                 col = 0
             end
         end
     end
+    line
+end
+
+@test print_line("Hi, everybody! How are you feeling today?", signal) == "Hi, everybody! How are you feeling today?"
+@test begin
+    to_escape() do exit
+        handling(LineEndLimit => (c)->exit()) do
+            print_line("Hi, everybody! How are you feeling today?", signal)
+        end
+    end
+    line == "Hi, everybody! How a"
+end
+@test handling(LineEndLimit => (c) -> global line *= "\n") do
+    print_line("Hi, everybody! How are you feeling today?", signal)
+end == "Hi, everybody! How a\nre you feeling today\n?"
+
+@test begin
+    to_escape() do exit
+        handling(LineEndLimit => (c)->exit()) do
+            print_line("Hi, everybody! How are you feeling today?", error)
+        end
+    end
+    line == "Hi, everybody! How a"
+end
+@test_throws LineEndLimit handling(LineEndLimit => (c) -> global line *= "\n") do
+    print_line("Hi, everybody! How are you feeling today?", error)
+end
+@test line == "Hi, everybody! How a\n"
 
 
+# Restarts
 
 reciprocal(value) =
     with_restart(
@@ -94,34 +136,3 @@ end == 0
         reciprocal(0)
     end == 0.1
 end
-
-
-#=
-handling(DivisionByZero => (c)->println("I saw it too")) do
-    handling(DivisionByZero => (c)->println("I saw a division by zero")) do
-        reciprocal(0)
-    end
-end
-
-struct LineEndLimit <: Exception end
-
-print_line(str, line_end=20) =
-let col = 0 
-    for c in str print(c)
-        col += 1
-        if col == line_end
-            Base.error(LineEndLimit())
-            col = 0
-        end
-    end
-end
-
-handling(LineEndLimit => (c)->println()) do
-    print_line("Hi, everybody! How are you feeling today?") 
-end
-=#
-
-
-
-
-
