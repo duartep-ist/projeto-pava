@@ -33,7 +33,7 @@ end
 struct DivisionByZero <: Exception
 end
 
-simple_reciprocal(x) = x == 0 ? Base.error(DivisionByZero()) : 1/x
+simple_reciprocal(x) = x == 0 ? error(DivisionByZero()) : 1/x
 
 @test to_escape() do exit
     handling(DivisionByZero => (c) -> exit(true)) do
@@ -132,7 +132,7 @@ end == 0.1
 end == 0
 
 @test let count = 0
-    handling(DivisionByZero => (c) -> (count = count + 1; invoke_restart(:retry_using, count == 1 ? 0 : 10))) do
+    handling(DivisionByZero => (c) -> (count += 1; invoke_restart(:retry_using, count == 1 ? 0 : 10))) do
         reciprocal(0)
-    end == 0.1
+    end == 0.1 && count == 2
 end

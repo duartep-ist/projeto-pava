@@ -9,8 +9,7 @@ exception_handler_dicts::Vector{Dict{Any, Function}} = []
 restart_stack::Vector{RestartInfo} = []
 
 function handling(func, handlers...)
-    let
-        handler_dict = Dict(handlers)
+    let handler_dict = Dict(handlers)
         push!(exception_handler_dicts, handler_dict)
         try
             func()
@@ -24,25 +23,22 @@ struct EscapedException <: Exception end
 escaped = EscapedException()
 
 function to_escape(func)
-    did_escape = false
-    ret_val = nothing
-    escape(ret::Any) = begin did_escape = true; ret_val = ret; throw(escaped) end
-    escape() = escape(nothing)
-
-    try
-        func(escape)
-    catch
-        if did_escape
-            return ret_val
-        else
-            rethrow()
+    let did_escape = false, ret_val = nothing, escape(ret::Any) = begin did_escape = true; ret_val = ret; throw(escaped) end
+        escape() = escape(nothing)
+        try
+            func(escape)
+        catch
+            if did_escape
+                return ret_val
+            else
+                rethrow()
+            end
         end
     end
 end
 
 function with_restart(func, restarts...)
-    let
-        restart_handler_dict = Dict(restarts)
+    let restart_handler_dict = Dict(restarts)
         try
             to_escape() do escape
                 push!(restart_stack, RestartInfo(restart_handler_dict, escape))
@@ -56,11 +52,11 @@ end
 
 function available_restart(name)
     for info in Iterators.reverse(restart_stack)
-            if name in keys(info.handler_dict)
-                return true
-            end
+        if name in keys(info.handler_dict)
+            return true
         end
-    return false
+    end
+    false
 end
 
 function invoke_restart(name, args...)
