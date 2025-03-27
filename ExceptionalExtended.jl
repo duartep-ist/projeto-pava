@@ -1,9 +1,4 @@
-module Exceptional
-
-struct RestartInfo
-    handler_dict::Dict{Symbol, Restart}
-    escape::Function
-end
+module ExceptionalExtended
 
 struct Restart
     name::Symbol
@@ -11,6 +6,11 @@ struct Restart
     test::Union{Function, Nothing}
     report::Union{Function, Nothing}
     interactive::Union{Function, Nothing}
+end
+
+struct RestartInfo
+    handler_dict::Dict{Symbol, Restart}
+    escape::Function
 end
 
 exception_handler_dicts::Vector{Dict{Any, Function}} = []
@@ -54,12 +54,12 @@ function parse_restart(restart)
         name = restart.first
         func = nothing
         test = () -> true
-        report = () -> (restart.first) #TODO: função que devolve string ou string?
+        report = () -> (restart.first)
         interactive = () -> ()
 
-        if isa(restart.second, Tuple) #(rstartname, (:report, report, :interactive, interactive, :test, test))
+        if isa(restart.second, Tuple) # (:name, (:report, report, :interactive, interactive, :test, test))
             func = restart.second[1]
-            for i in 2:size(restart.second)
+            for i in 2:length(restart.second)
                 if restart.second[i] == :test
                     test = restart.second[i+1]
                 elseif restart.second[i] == :report
@@ -69,7 +69,7 @@ function parse_restart(restart)
                 end
                 i = i+1
             end
-        else # (restartname, func)
+        else # (:name, func)
             func = restart.second
         end
         return Restart(name, func, test, report, interactive)
@@ -77,14 +77,14 @@ function parse_restart(restart)
 end
 
 function print_restarts(exception)
-    let restarts::Vector{Pair{Function, Restart}} = [], n = 1, chosen::Restart = nothing
+    let restarts::Vector{Pair{Function, Restart}} = [], n = 1, chosen::Union{Nothing, Pair{Function, Restart}} = nothing
     println("Error of type: $exception")
     # TODO perguntar stor se são todos os restarts ou só os da função que causou o erro
     println("Available restarts:")
     for info in Iterators.reverse(restart_stack)
         for r in values(info.handler_dict)
             if r.test()
-                push!(restarts, {info.escape, r})
+                push!(restarts, Pair(info.escape, r))
                 println("$n: $(r.name) $(r.report())")
                 n = n + 1
             end
@@ -92,10 +92,9 @@ function print_restarts(exception)
     end
     
     print("Choose one restart: ")
-    chosen = restarts.chosen[parse(Int, readline())]
+    chosen = restarts[parse(Int, readline())]
 
-    chosen.first(chosen.second.func(chosen.second.interactive())) # TODO check espalhar argumentos ?
-    
+    chosen.first(chosen.second.func(chosen.second.interactive()...))
     end
 end
 
@@ -165,6 +164,27 @@ macro restart_case(ex, cases...)
     end))
 end
 
-export to_escape, handling, with_restart, available_restart, invoke_restart, signal, handler_case, restart_case
+#= Example
+struct DivisionByZero <: Exception end
 
+divide(a, b) = with_restart(:return_zero => (() -> 0, :test, () -> false),
+                            :return_value => (identity, :interactive, ()->(let ret::String
+                                                                               print("Enter a return value: ")
+                                                                               ret = readline()
+                                                                               ret
+                                                                           end)),
+                            :retry_using => (divide, :report, ()->"Retry using another numerator and denominator",
+                                                     :interactive, ()->(let a::Int, b::Int
+                                                                            print("Enter a numerator: ")
+                                                                            a = parse(Int, readline())
+                                                                            print("Enter a denominator: ")
+                                                                            b = parse(Int, readline())
+                                                                            a,b
+                                                                        end))) do
+                            b == 0 ? 
+                            error(DivisionByZero()) :
+                            a/b
+end
+=#
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal, handler_case, restart_case#, divide
 end
