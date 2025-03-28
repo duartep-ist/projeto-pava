@@ -11,20 +11,24 @@ end
 struct RestartInfo
     handler_dict::Dict{Symbol, Restart}
     escape::Function
-    caller::Function
+    #caller::Function
 end
 
-exception_handler_dicts::Vector{Vector{Function}} = []
+struct ExceptionHandler
+    exception::DataType
+    handler::Function
+end
+
+exception_handlers::Vector{Vector{ExceptionHandler}} = []
 restart_stack::Vector{RestartInfo} = []
 
 function handling(func, handlers...)
-    let
-        handler_dict = Vector(handlers)
-        push!(exception_handler_dicts, handler_dict)
+    let handler_list = [ExceptionHandler(h.first, h.second) for h in handlers]
+        push!(exception_handlers, handler_list)
         try
             func()
         finally
-            pop!(exception_handler_dicts)
+            pop!(exception_handlers)
         end
     end
 end
@@ -58,7 +62,7 @@ function parse_restart(restart)
         report = () -> (restart.first)
         interactive = () -> ()
 
-        if isa(restart.second, Tuple) # (:name, (:report, report, :interactive, interactive, :test, test))
+        if restart.second isa Tuple # (:name, (:report, report, :interactive, interactive, :test, test))
             func = restart.second[1]
             for i in 2:length(restart.second)
                 if restart.second[i] == :test
@@ -103,10 +107,10 @@ end
 function with_restart(func, restarts...)
     let
         restart_handler_dict = Dict([(r.first => parse_restart(r)) for r in restarts])
-        push!(restart_handler_dict, )
+        #push!(restart_handler_dict, )
         try
             to_escape() do escape
-                push!(restart_stack, RestartInfo(restart_handler_dict, escape, func))
+                push!(restart_stack, RestartInfo(restart_handler_dict, escape#=, func=#))
                 func()
             end
         finally    
@@ -135,14 +139,14 @@ function invoke_restart(name, args...)
 end
 
 function signal(exception::Exception)
-    for handler_dict in Iterators.reverse(exception_handler_dicts)
-        for t in supertypes(typeof(exception))
-            if t in keys(handler_dict)
-                handler_dict[typeof(exception)](exception)
+    for handler_frame in reverse(exception_handlers)
+        for handler in handler_frame
+            if exception isa handler.exception
+                handler.handler(exception)
                 break
             end
-        end    
-    end
+        end
+    end    
 end
 
 #=
@@ -150,21 +154,6 @@ with_restart (:restart=>()) do
     with_restart (:restart2=>()) do
         func()
 =#
-
-#=
-handling(Exception => ()->(), DivisionByZero => () ->()) do
-    handling(Exception => ()->(), DivisionByZero => () ->()) do
-    error(DivisionByZero())
-end
-
-
-handling     divison
-
-  handling     any
-
-    handling    divison, exception, any
-=#
-
 
 function Base.error(exception::Exception)
     signal(exception)

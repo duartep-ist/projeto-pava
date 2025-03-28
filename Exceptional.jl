@@ -5,16 +5,21 @@ struct RestartInfo
     escape::Function
 end
 
-exception_handler_dicts::Vector{Dict{Any, Function}} = []
+struct ExceptionHandler
+    exception::DataType
+    handler::Function
+end
+
+exception_handlers::Vector{Vector{ExceptionHandler}} = []
 restart_stack::Vector{RestartInfo} = []
 
 function handling(func, handlers...)
-    let handler_dict = Dict(handlers)
-        push!(exception_handler_dicts, handler_dict)
+    let handler_list = [ExceptionHandler(h.first, h.second) for h in handlers]
+        push!(exception_handlers, handler_list)
         try
             func()
         finally
-            pop!(exception_handler_dicts)
+            pop!(exception_handlers)
         end
     end
 end
@@ -70,9 +75,12 @@ function invoke_restart(name, args...)
 end
 
 function signal(exception::Exception)
-    for handler_dict in Iterators.reverse(exception_handler_dicts)
-        if typeof(exception) in keys(handler_dict)
-            handler_dict[typeof(exception)](exception)
+    for handler_frame in reverse(exception_handlers)
+        for handler in handler_frame
+            if exception isa handler.exception
+                handler.handler(exception)
+                break
+            end
         end
     end
 end
