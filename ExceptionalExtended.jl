@@ -131,7 +131,7 @@ function invoke_restart(name, args...)
             return
         end
     end
-    error("The restart named \"$name\" is not available.")
+    throw(UndefinedRestartException(name))
 end
 
 function signal(exception::Exception)
@@ -192,6 +192,17 @@ macro restart_case(ex, cases...)
     end))
 end
 
+
+# Library errors
+
+struct UndefinedRestartException <: Exception
+    name::Symbol
+end
+function Base.showerror(io::IO, e::UndefinedRestartException)
+    print(io, "UndefinedRestartException: the restart named \"$(e.name)\" is not available.")
+end
+
+
 # Example
 struct DivisionByZero <: Exception end
 
@@ -214,5 +225,5 @@ divide(a, b) = with_restart(:return_zero => (() -> 0, :test, () -> false),
                             a/b
 end
 
-export to_escape, handling, with_restart, available_restart, invoke_restart, signal, handler_case, restart_case, divide, DivisionByZero
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal, handler_case, restart_case, divide, UndefinedRestartException, DivisionByZero
 end
