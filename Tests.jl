@@ -57,10 +57,10 @@ struct LineEndLimit <: Exception
 end
 
 function print_line(str, signal_func, line_end=20)
-    global line = ""
+    global text = ""
     let col = 0 
         for c in str
-            line *= c
+            text *= c
             col += 1
             if col == line_end
                 signal_func(LineEndLimit())
@@ -68,7 +68,7 @@ function print_line(str, signal_func, line_end=20)
             end
         end
     end
-    line
+    text
 end
 
 @test print_line("Hi, everybody! How are you feeling today?", signal) == "Hi, everybody! How are you feeling today?"
@@ -78,9 +78,9 @@ end
             print_line("Hi, everybody! How are you feeling today?", signal)
         end
     end
-    line == "Hi, everybody! How a"
+    text == "Hi, everybody! How a"
 end
-@test handling(LineEndLimit => (c) -> global line *= "\n") do
+@test handling(LineEndLimit => (c) -> global text *= "\n") do
     print_line("Hi, everybody! How are you feeling today?", signal)
 end == "Hi, everybody! How a\nre you feeling today\n?"
 
@@ -90,12 +90,12 @@ end == "Hi, everybody! How a\nre you feeling today\n?"
             print_line("Hi, everybody! How are you feeling today?", error)
         end
     end
-    line == "Hi, everybody! How a"
+    text == "Hi, everybody! How a"
 end
-@test_throws LineEndLimit handling(LineEndLimit => (c) -> global line *= "\n") do
+@test_throws LineEndLimit handling(LineEndLimit => (c) -> global text *= "\n") do
     print_line("Hi, everybody! How are you feeling today?", error)
 end
-@test line == "Hi, everybody! How a\n"
+@test text == "Hi, everybody! How a\n"
 
 
 # Restarts
@@ -136,3 +136,50 @@ end == 0
         reciprocal(0)
     end == 0.1 && count == 2
 end
+
+
+# From exceptions.pdf, page 20
+function print_line_restart(str, signal_func, line_end=20)
+    global text = ""
+    let col = 0 
+        for c in str
+            text *= c
+            col += 1
+            if col == line_end
+                restart_result = with_restart(
+                    :wrap => () -> (text *= "\n"; col = 0),
+                    :truncate => () -> :truncate,
+                    :continue => () -> nothing
+                ) do
+                    signal_func(LineEndLimit())
+                end
+
+                if restart_result == :truncate
+                    return text
+                end
+            end
+        end
+    end
+    text
+end
+
+@test print_line_restart("Hi, everybody! How are you feeling today?", signal) == "Hi, everybody! How are you feeling today?"
+@test begin
+    handling(LineEndLimit => (c) -> invoke_restart(:truncate)) do
+        print_line_restart("Hi, everybody! How are you feeling today?", signal)
+    end
+    text == "Hi, everybody! How a"
+end
+@test handling(LineEndLimit => (c) -> invoke_restart(:wrap)) do
+    print_line_restart("Hi, everybody! How are you feeling today?", signal)
+end == "Hi, everybody! How a\nre you feeling today\n?"
+
+@test begin
+    handling(LineEndLimit => (c) -> invoke_restart(:truncate)) do
+        print_line_restart("Hi, everybody! How are you feeling today?", error)
+    end
+    text == "Hi, everybody! How a"
+end
+@test handling(LineEndLimit => (c) -> invoke_restart(:wrap)) do
+    print_line_restart("Hi, everybody! How are you feeling today?", error)
+end == "Hi, everybody! How a\nre you feeling today\n?"
