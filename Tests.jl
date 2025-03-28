@@ -1,7 +1,15 @@
-include("Exceptional.jl")
-using .Exceptional
-using Test
+try
+    handling
+catch e
+    if typeof(e) == UndefVarError
+        println(stderr, "ERROR: Exceptional-compatible library not found. Did you mean to run RunTests.jl instead?")
+        exit(1)
+    else
+        rethrow()
+    end
+end
 
+using Test
 
 # Escaping
 
