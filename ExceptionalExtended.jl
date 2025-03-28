@@ -172,14 +172,62 @@ function Base.error(exception::Exception)
     throw(exception)
 end
 
+
+# Macros
+
+function verify_single_param_list(expr)
+    if !(typeof(expr) == Symbol || (typeof(expr) == Expr && expr.head == :tuple && length(expr.args) <= 1))
+        error("expected zero or one parameter names")
+    end
+end
+
+struct HandlerCaseException
+    index::Int16
+    exception::Exception
+end
 macro handler_case(ex, cases...)
-	esc(:(handling($(
-		[:(
-			$(case.args[1]) => $(case.args[2]) -> $(case.args[3])
-		) for case in cases]...
-	)) do
-        $ex
-    end))
+    for case in cases
+        verify_single_param_list(case.args[2])
+    end
+    error_cases = filter((case) -> case.args[1] != :nothing, cases)
+    no_error_cases = filter((case) -> case.args[1] == :nothing, cases)
+    if length(no_error_cases) > 1
+        error("no more than 1 no error case can be present.")
+    end
+    no_error_case = length(no_error_cases) != 0 ? no_error_cases[1] : nothing
+
+    :(
+        let result = to_escape() do exit
+            handling($(
+                [:(
+                    $(esc(error_cases[i].args[1])) => exception -> exit(HandlerCaseException($i, exception))
+                ) for i in 1:length(error_cases)]...
+            )) do
+                $(esc(ex))
+            end
+        end
+
+            if typeof(result) == HandlerCaseException
+                $([:(
+                    if result.index == $i
+                        return let $(esc(error_cases[i].args[2])) = result.exception
+                            $(esc(error_cases[i].args[3]))
+                        end
+                    end
+                ) for i in 1:length(error_cases)]...)
+            else
+                $(
+                    no_error_case == nothing ?
+                        :result :
+                        :(
+                            let $(esc(no_error_case.args[2])) = result
+                                $(esc(no_error_case.args[3]))
+                            end
+                        )
+                )
+            end
+        end
+    )
 end
 
 macro restart_case(ex, cases...)
@@ -225,5 +273,5 @@ divide(a, b) = with_restart(:return_zero => (() -> 0, :test, () -> false),
                             a/b
 end
 
-export to_escape, handling, with_restart, available_restart, invoke_restart, signal, handler_case, restart_case, divide, UndefinedRestartException, DivisionByZero
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal, @handler_case, @restart_case, divide, UndefinedRestartException, DivisionByZero
 end
