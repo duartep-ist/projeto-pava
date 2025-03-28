@@ -3,22 +3,23 @@ module ExceptionalExtended
 struct Restart
     name::Symbol
     func::Function
-    test::Union{Function, Nothing}
-    report::Union{Function, Nothing}
-    interactive::Union{Function, Nothing}
+    test::Function
+    report::Function
+    interactive::Function
 end
 
 struct RestartInfo
     handler_dict::Dict{Symbol, Restart}
     escape::Function
+    caller::Function
 end
 
-exception_handler_dicts::Vector{Dict{Any, Function}} = []
+exception_handler_dicts::Vector{Vector{Function}} = []
 restart_stack::Vector{RestartInfo} = []
 
 function handling(func, handlers...)
     let
-        handler_dict = Dict(handlers)
+        handler_dict = Vector(handlers)
         push!(exception_handler_dicts, handler_dict)
         try
             func()
@@ -79,7 +80,6 @@ end
 function print_restarts(exception)
     let restarts::Vector{Pair{Function, Restart}} = [], n = 1, chosen::Union{Nothing, Pair{Function, Restart}} = nothing
     println("Error of type: $exception")
-    # TODO perguntar stor se são todos os restarts ou só os da função que causou o erro
     println("Available restarts:")
     for info in Iterators.reverse(restart_stack)
         for r in values(info.handler_dict)
@@ -90,6 +90,8 @@ function print_restarts(exception)
             end
         end
     end
+
+    #TODO adicionar default restarts
     
     print("Choose one restart: ")
     chosen = restarts[parse(Int, readline())]
@@ -101,9 +103,10 @@ end
 function with_restart(func, restarts...)
     let
         restart_handler_dict = Dict([(r.first => parse_restart(r)) for r in restarts])
+        push!(restart_handler_dict, )
         try
             to_escape() do escape
-                push!(restart_stack, RestartInfo(restart_handler_dict, escape))
+                push!(restart_stack, RestartInfo(restart_handler_dict, escape, func))
                 func()
             end
         finally    
@@ -132,11 +135,35 @@ end
 
 function signal(exception::Exception)
     for handler_dict in Iterators.reverse(exception_handler_dicts)
-        if typeof(exception) in keys(handler_dict)
-            handler_dict[typeof(exception)](exception)
-        end
+        for t in supertypes(typeof(exception))
+            if t in keys(handler_dict)
+                handler_dict[typeof(exception)](exception)
+                break
+            end
+        end    
     end
 end
+
+#=
+with_restart (:restart=>()) do 
+    with_restart (:restart2=>()) do
+        func()
+=#
+
+#=
+handling(Exception => ()->(), DivisionByZero => () ->()) do
+    handling(Exception => ()->(), DivisionByZero => () ->()) do
+    error(DivisionByZero())
+end
+
+
+handling     divison
+
+  handling     any
+
+    handling    divison, exception, any
+=#
+
 
 function Base.error(exception::Exception)
     signal(exception)
@@ -164,7 +191,7 @@ macro restart_case(ex, cases...)
     end))
 end
 
-#= Example
+# Example
 struct DivisionByZero <: Exception end
 
 divide(a, b) = with_restart(:return_zero => (() -> 0, :test, () -> false),
@@ -185,6 +212,6 @@ divide(a, b) = with_restart(:return_zero => (() -> 0, :test, () -> false),
                             error(DivisionByZero()) :
                             a/b
 end
-=#
-export to_escape, handling, with_restart, available_restart, invoke_restart, signal, handler_case, restart_case#, divide
+
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal, handler_case, restart_case, divide, DivisionByZero
 end
