@@ -131,6 +131,7 @@ function invoke_restart(name, args...)
             return
         end
     end
+    error("The restart named \"$name\" is not available.")
 end
 
 function signal(exception::Exception)
