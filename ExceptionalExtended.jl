@@ -11,7 +11,7 @@ end
 struct RestartInfo
     handler_dict::Dict{Symbol, Restart}
     escape::Function
-    #caller::Function
+    caller::Function
 end
 
 struct ExceptionHandler
@@ -55,13 +55,7 @@ end
 
 
 function parse_restart(restart)
-    let
-        name = restart.first
-        func = nothing
-        test = () -> true
-        report = () -> (restart.first)
-        interactive = () -> ()
-
+    let name = restart.first, func = nothing, test = () -> true, report = () -> (uppercase(String(restart.first))), interactive = () -> ()
         if restart.second isa Tuple # (:name, (:report, report, :interactive, interactive, :test, test))
             func = restart.second[1]
             for i in 2:length(restart.second)
@@ -82,21 +76,26 @@ function parse_restart(restart)
 end
 
 function print_restarts(exception)
-    let restarts::Vector{Pair{Function, Restart}} = [], n = 1, chosen::Union{Nothing, Pair{Function, Restart}} = nothing
+    let restarts::Vector{Pair{Function, Restart}} = [], chosen::Union{Nothing, Pair{Function, Restart}} = nothing
     println("Error of type: $exception")
     println("Available restarts:")
     for info in Iterators.reverse(restart_stack)
         for r in values(info.handler_dict)
             if r.test()
                 push!(restarts, Pair(info.escape, r))
-                println("$n: $(r.name) $(r.report())")
-                n = n + 1
+                println("$(length(restarts)): [$(uppercase(String(r.name)))] $(r.report())")
             end
         end
     end
-
-    #TODO adicionar default restarts
     
+    # Retry
+    push!(restarts, restart_stack[end].escape => parse_restart(:retry => restart_stack[end].caller))
+    println("$(length(restarts)): [RETRY] Retry evaluation request.")
+
+    # Abort
+    push!(restarts, restart_stack[begin].escape => parse_restart(:abort => () -> (throw(exception))))
+    println("$(length(restarts)): [ABORT] Abort entirely from this Julia process.")
+
     print("Choose one restart: ")
     chosen = restarts[parse(Int, readline())]
 
@@ -105,15 +104,13 @@ function print_restarts(exception)
 end
 
 function with_restart(func, restarts...)
-    let
-        restart_handler_dict = Dict([(r.first => parse_restart(r)) for r in restarts])
-        #push!(restart_handler_dict, )
+    let restart_handler_dict = Dict([(r.first => parse_restart(r)) for r in restarts])
         try
             to_escape() do escape
-                push!(restart_stack, RestartInfo(restart_handler_dict, escape#=, func=#))
+                push!(restart_stack, RestartInfo(restart_handler_dict, escape, func))
                 func()
             end
-        finally    
+        finally
             pop!(restart_stack)
         end
     end
@@ -149,11 +146,6 @@ function signal(exception::Exception)
     end    
 end
 
-#=
-with_restart (:restart=>()) do 
-    with_restart (:restart2=>()) do
-        func()
-=#
 
 function Base.error(exception::Exception)
     signal(exception)
