@@ -194,3 +194,26 @@ end
 @test handling(LineEndLimit => (c) -> invoke_restart(:wrap)) do
     print_line_restart("Hi, everybody! How are you feeling today?", error)
 end == "Hi, everybody! How a\nre you feeling today\n?"
+
+
+# Nested restarts
+
+function reciprocal_vector(input)
+    output = Vector()
+    for value in input
+        with_restart(:skip => () -> nothing) do
+            push!(output, reciprocal(value))
+        end
+    end
+    output
+end
+
+@test reciprocal_vector([2, 3]) == [1/2, 1/3]
+
+@test handling(DivisionByZero => (c) -> invoke_restart(:return_zero)) do
+    reciprocal_vector([1, 0, 2])
+end == [1, 0, 1/2]
+
+@test handling(DivisionByZero => (c) -> invoke_restart(:skip)) do
+    reciprocal_vector([1, 0, 2])
+end == [1, 1/2]
