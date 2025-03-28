@@ -197,7 +197,7 @@ macro handler_case(ex, cases...)
     no_error_case = length(no_error_cases) != 0 ? no_error_cases[1] : nothing
 
     :(
-        let result = to_escape() do exit
+        let output, result = to_escape() do exit
             handling($(
                 [:(
                     $(esc(error_cases[i].args[1])) => exception -> exit(HandlerCaseException($i, exception))
@@ -210,13 +210,13 @@ macro handler_case(ex, cases...)
             if typeof(result) == HandlerCaseException
                 $([:(
                     if result.index == $i
-                        return let $(esc(error_cases[i].args[2])) = result.exception
+                        output = let $(esc(error_cases[i].args[2])) = result.exception
                             $(esc(error_cases[i].args[3]))
                         end
                     end
                 ) for i in 1:length(error_cases)]...)
             else
-                $(
+                output = $(
                     no_error_case == nothing ?
                         :result :
                         :(
@@ -226,6 +226,7 @@ macro handler_case(ex, cases...)
                         )
                 )
             end
+            output
         end
     )
 end

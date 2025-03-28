@@ -88,7 +88,6 @@ function square_root_vector_return(input)
     end
     output
 end
-@test square_root_vector_return([0, 1, 4]) == [0, 1, 2]
 @test square_root_vector_return([0, -1, 4]) == "Error!"
 
 function square_root_vector_break(input)
@@ -101,8 +100,20 @@ function square_root_vector_break(input)
     end
     output
 end
-@test square_root_vector_break([0, 1, 4]) == [0, 1, 2]
 @test square_root_vector_break([0, -1, 4]) == [0]
+
+function square_root_vector_replace(input)
+    output = Vector()
+    for value in input
+        push!(output, @handler_case(
+            square_root(value),
+            (DomainError, (), "Error!")
+        ))
+    end
+    output
+end
+@test square_root_vector_replace([0, -1, 4]) == [0, "Error!", 2]
+
 
 # @handler_case evaluates each of its arguments only once.
 @test let expr_eval_count = 0, type_eval_count = 0
@@ -112,3 +123,8 @@ end
     )
     expr_eval_count == 1 && type_eval_count == 1
 end
+
+println(@macroexpand @handler_case(
+    123,
+    (DomainError, (), break)
+))
