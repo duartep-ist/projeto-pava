@@ -2,7 +2,7 @@ try
     @macroexpand @handler_case(nothing)
 catch e
     if typeof(e) == UndefVarError
-        println(stderr, "ERROR: ExceptionalExtended-compatible library not found. Did you mean to run RunTestsExtended.jl instead?")
+        println(stderr, "Execute \"RunTestsExtended.jl\" instead.")
         exit(1)
     else
         rethrow()

@@ -2,7 +2,7 @@ try
     handling
 catch e
     if typeof(e) == UndefVarError
-        println(stderr, "ERROR: Exceptional-compatible library not found. Did you mean to run RunTests.jl instead?")
+        println(stderr, "Execute \"RunTests.jl\" instead.")
         exit(1)
     else
         rethrow()
