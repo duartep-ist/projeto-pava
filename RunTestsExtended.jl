@@ -3,3 +3,5 @@ using .ExceptionalExtended
 
 include("Tests.jl")
 include("TestsExtended.jl")
+
+println("The implementation successfully passed all tests!")
