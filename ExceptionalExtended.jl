@@ -151,8 +151,6 @@ function Base.error(exception::Exception)
     signal(exception)
     if length(restart_stack) > 0
         print_restarts(exception)
-    else
-        println("No restarts available.")
     end
     throw(exception)
 end
