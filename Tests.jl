@@ -51,8 +51,8 @@ end
 
 @test let saw0 = false, saw1 = false
     to_escape() do exit
-        handling(DivisionByZero => (c)-> (saw0 = true; exit(true))) do
-            handling(DivisionByZero => (c)-> (saw1 = true)) do
+        handling(DivisionByZero => (c) -> (saw0 = true; exit(true))) do
+            handling(DivisionByZero => (c) -> (saw1 = true)) do
                 simple_reciprocal(0)
             end
         end
@@ -79,6 +79,7 @@ function print_line(str, signal_func, line_end=20)
     text
 end
 
+# Signals
 @test print_line("Hi, everybody! How are you feeling today?", signal) == "Hi, everybody! How are you feeling today?"
 @test begin
     to_escape() do exit
@@ -92,6 +93,13 @@ end
     print_line("Hi, everybody! How are you feeling today?", signal)
 end == "Hi, everybody! How a\nre you feeling today\n?"
 
+# Errors
+@test_throws LineEndLimit print_line("Hi, everybody! How are you feeling today?", error)
+@test text == "Hi, everybody! How a"
+@test_throws LineEndLimit handling(LineEndLimit => (c) -> global text *= "\n") do
+    print_line("Hi, everybody! How are you feeling today?", error)
+end
+@test text == "Hi, everybody! How a\n"
 @test begin
     to_escape() do exit
         handling(LineEndLimit => (c)->exit()) do
@@ -100,10 +108,6 @@ end == "Hi, everybody! How a\nre you feeling today\n?"
     end
     text == "Hi, everybody! How a"
 end
-@test_throws LineEndLimit handling(LineEndLimit => (c) -> global text *= "\n") do
-    print_line("Hi, everybody! How are you feeling today?", error)
-end
-@test text == "Hi, everybody! How a\n"
 
 
 # Restarts

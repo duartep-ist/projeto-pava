@@ -9,23 +9,15 @@ catch e
     end
 end
 
-using Test
-
 square_root(value) =
-    with_restart(
-        :return_zero => () -> 0,
-        :return_value => identity,
-        :retry_using => square_root
-    ) do
-        !isa(value, Real) ?
-            error(TypeError(:square_root, "", Real, value)) :
-            value < 0 ?
-                error(DomainError(value)) :
-                sqrt(value)
-    end
+    !isa(value, Real) ?
+        error(TypeError(:square_root, "", Real, value)) :
+        value < 0 ?
+            error(DomainError(value)) :
+            sqrt(value)
 
 
-# The handler_case macro
+# The @handler_case macro
 
 # For convenience, we implement a @handler_case macro inspired by Common Lisp's handler-case. The
 # first argument to @handler_case is the expression to be evaluated. The rest of the arguments are
@@ -77,7 +69,7 @@ square_root(value) =
     (DomainError, (), invoke_restart(:return_zero))
 )
 
-# You can, however, return from functions and break from loops from inside @handler_case.
+# You can, however, return from functions and break/continue from loops from inside @handler_case.
 function square_root_vector_return(input)
     output = Vector()
     for value in input
@@ -124,7 +116,50 @@ end
     expr_eval_count == 1 && type_eval_count == 1
 end
 
-println(@macroexpand @handler_case(
-    123,
-    (DomainError, (), break)
-))
+
+
+# The @restart_case macro
+
+# With @restart_case, we can implement the above functions into a single one using restarts. Like
+# @handler_case, @restart_case supports return, break and continue.
+function square_root_vector_restartable(input)
+    output = Vector()
+    for value in input
+        push!(output, @restart_case(
+            square_root(value),
+            (replace_with, (v), v),
+            (stop, (), break),
+            (give_up, (), return "Error!")
+        ))
+    end
+    output
+end
+
+@test square_root_vector_restartable([0, 1, 4]) == [0, 1, 2]
+@test handling(DomainError => (c)->invoke_restart(:replace_with, "Oh no!")) do
+    square_root_vector_restartable([0, -1, 4])
+end == [0, "Oh no!", 2]
+@test handling(DomainError => (c)->invoke_restart(:stop)) do
+    square_root_vector_restartable([0, -1, 4])
+end == [0]
+@test handling(DomainError => (c)->invoke_restart(:give_up)) do
+    square_root_vector_restartable([0, -1, 4])
+end == "Error!"
+
+
+# Like with_restart, @restart_case supports several parameters for each case.
+struct DivisionByZero <: Exception
+end
+divide(dividend, divisor) =
+    @restart_case(
+        divisor == 0 ?
+            error(DivisionByZero()) :
+            dividend/divisor,
+        (return_zero, (), 0),
+        (return_value, (x), x),
+        (retry_using, (a, b), divide(a, b))
+    )
+
+@test handling(DivisionByZero => (c)->invoke_restart(:retry_using, 1, 2)) do
+    divide(2, 0)
+end == 1/2

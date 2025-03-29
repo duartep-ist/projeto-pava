@@ -158,13 +158,22 @@ end
 
 # Macros
 
-function verify_single_param_list(expr)
-    if !(typeof(expr) == Symbol || (typeof(expr) == Expr && expr.head == :tuple && length(expr.args) <= 1))
+function verify_single_param_list(ex)
+    if !(typeof(ex) == Symbol || (typeof(ex) == Expr && ex.head == :tuple && length(ex.args) <= 1))
         error("expected zero or one parameter names")
     end
 end
+function bare_identifier_to_tuple(ex)
+    if typeof(ex) == Symbol
+        :(($ex,))
+    elseif typeof(ex) == Expr && ex.head == :tuple
+        ex
+    else
+        error("expected an identifier or a tuple of identifiers")
+    end
+end
 
-struct HandlerCaseException
+struct HandlerCaseResult
     index::Int16
     exception::Exception
 end
@@ -180,17 +189,18 @@ macro handler_case(ex, cases...)
     no_error_case = length(no_error_cases) != 0 ? no_error_cases[1] : nothing
 
     :(
-        let output, result = to_escape() do exit
-            handling($(
-                [:(
-                    $(esc(error_cases[i].args[1])) => exception -> exit(HandlerCaseException($i, exception))
-                ) for i in 1:length(error_cases)]...
-            )) do
-                $(esc(ex))
+        let output,
+            result = to_escape() do exit
+                handling($(
+                    [:(
+                        $(esc(error_cases[i].args[1])) => exception -> exit(HandlerCaseResult($i, exception))
+                    ) for i in 1:length(error_cases)]...
+                )) do
+                    $(esc(ex))
+                end
             end
-        end
 
-            if typeof(result) == HandlerCaseException
+            if typeof(result) == HandlerCaseResult
                 $([:(
                     if result.index == $i
                         output = let $(esc(error_cases[i].args[2])) = result.exception
@@ -209,19 +219,58 @@ macro handler_case(ex, cases...)
                         )
                 )
             end
+
             output
         end
     )
 end
 
+
+struct RestartCaseResult
+    index::Int16
+    args::Tuple
+end
+struct RestartCaseParsedCase
+    name::Symbol
+    params::Expr
+    body::Any
+end
 macro restart_case(ex, cases...)
-	esc(:(with_restart($(
-		[:(
-			$(case.args[1]) => $(case.args[2]) -> $(case.args[3])
-		) for case in cases]...
-	)) do
-        $ex
-    end))
+    parsed_cases = map(case -> RestartCaseParsedCase(
+        case.args[1],
+        bare_identifier_to_tuple(case.args[2]),
+        case.args[3]
+    ), cases)
+
+    :(
+        let output,
+            result = to_escape() do exit
+                with_restart($(
+                    [:(
+                        # QuoteNode is used to transform the identifier into a symbol
+                        $(QuoteNode(parsed_cases[i].name)) => $(esc(parsed_cases[i].params)) -> exit(RestartCaseResult($i, $( esc(parsed_cases[i].params) )))
+                    ) for i in 1:length(parsed_cases)]...
+                )) do
+                    $(esc(ex))
+                end
+            end
+
+            if typeof(result) == RestartCaseResult
+                $([:(
+                    if result.index == $i
+                        # This relies on destructuring
+                        output = let $(esc(parsed_cases[i].params)) = result.args
+                            $(esc(parsed_cases[i].body))
+                        end
+                    end
+                ) for i in 1:length(parsed_cases)]...)
+            else
+                output = result
+            end
+
+            output
+        end
+    )
 end
 
 
