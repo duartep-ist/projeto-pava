@@ -132,7 +132,7 @@ end == 123
 @test handling(DivisionByZero => (c)->invoke_restart(:retry_using, 10)) do
     reciprocal(0)
 end == 0.1
-@test_throws UndefinedRestartException handling(DivisionByZero => (c)->invoke_restart(:invalid, 10)) do
+@test_throws UnavailableRestartException handling(DivisionByZero => (c)->invoke_restart(:invalid, 10)) do
     reciprocal(0)
 end
 

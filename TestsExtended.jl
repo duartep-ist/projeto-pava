@@ -64,7 +64,7 @@ square_root(value) =
 )
 
 # As in Common Lisp, @handler_case will stop the execution of the expression as soon as exception with its type contained in the list is signaled. This means that you can't invoke restarts from inside @handler_case.
-@test_throws UndefinedRestartException @handler_case(
+@test_throws UnavailableRestartException @handler_case(
     square_root(-1),
     (DomainError, (), invoke_restart(:return_zero))
 )
@@ -147,7 +147,7 @@ end == [0]
 end == "Error!"
 
 
-# Like with_restart, @restart_case supports several parameters for each case.
+# Like with_restart, @restart_case supports several parameters in each case, as well as restart options, such as test, report, and interactive.
 struct DivisionByZero <: Exception
 end
 divide(dividend, divisor) =
@@ -155,11 +155,41 @@ divide(dividend, divisor) =
         divisor == 0 ?
             error(DivisionByZero()) :
             dividend/divisor,
-        (return_zero, (), 0),
-        (return_value, (x), x),
-        (retry_using, (a, b), divide(a, b))
+
+        (return_zero, (),
+            report = () -> "Returns 0",
+            test = () -> dividend == 0,
+            0),
+        (return_value, (x),
+            report = () -> "Returns the specified value",
+            x),
+        (retry_using, (a, b),
+            report = () -> "Recomputes the calculation using the specified arguments",
+            divide(a, b))
     )
 
 @test handling(DivisionByZero => (c)->invoke_restart(:retry_using, 1, 2)) do
     divide(2, 0)
 end == 1/2
+@test handling(DivisionByZero => (c)->invoke_restart(:return_zero)) do
+    divide(0, 0)
+end == 0
+# Here, it won't work because of the test function.
+@test_throws UnavailableRestartException handling(DivisionByZero => (c)->invoke_restart(:return_zero)) do
+    divide(1, 0)
+end == 0
+
+# However, you can't pass a number of arguments different than expected.
+@test_throws MethodError handling(DivisionByZero => (c)->invoke_restart(:retry_using, 1)) do
+    divide(2, 0)
+end
+@test_throws MethodError handling(DivisionByZero => (c)->invoke_restart(:retry_using, 1, 2, 3)) do
+    divide(2, 0)
+end
+
+# handling(DivisionByZero => (c)->invoke_restart(:return_value, "Error!")) do
+#     divide(2, 0)
+# end
+# @test handling(DivisionByZero => (c)->invoke_restart(:return_value, -1)) do
+#     divide(2, 0)
+# end == -1

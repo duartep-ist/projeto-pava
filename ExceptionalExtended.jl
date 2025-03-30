@@ -87,7 +87,7 @@ function print_restarts(exception)
             end
         end
     end
-    
+
     # Retry
     push!(restarts, restart_stack[end].escape => parse_restart(:retry => restart_stack[end].caller))
     println("$(length(restarts)): [RETRY] Retry evaluation request.")
@@ -132,7 +132,7 @@ function invoke_restart(name, args...)
             return
         end
     end
-    throw(UndefinedRestartException(name))
+    throw(UnavailableRestartException(name))
 end
 
 function signal(exception::Exception)
@@ -234,13 +234,32 @@ struct RestartCaseParsedCase
     name::Symbol
     params::Expr
     body::Any
+
+    options::Dict{Symbol, Any}
+end
+const valid_restart_options = [:test, :report, :interactive]
+function parse_restart_case_option(element)
+    if typeof(element.args[1]) != Symbol
+        error("invalid restart option name \"$(element.args[1])\" in restart case")
+    end
+    if !(element.args[1] in valid_restart_options)
+        error("unknown restart option \"$(element.args[1])\"")
+    end
+
+    element.args[1] => element.args[2]
 end
 macro restart_case(ex, cases...)
-    parsed_cases = map(case -> RestartCaseParsedCase(
-        case.args[1],
-        bare_identifier_to_tuple(case.args[2]),
-        case.args[3]
-    ), cases)
+    parsed_cases = map(case -> let positional_args = filter(arg -> !(typeof(arg) == Expr && arg.head == :(=)), case.args),
+                                   optional_args = filter(arg -> typeof(arg) == Expr && arg.head == :(=), case.args),
+                                   options = Dict([parse_restart_case_option(arg) for arg in optional_args])
+
+        RestartCaseParsedCase(
+            positional_args[1],
+            bare_identifier_to_tuple(case.args[2]),
+            positional_args[3],
+            options
+        )
+    end, cases)
 
     :(
         let output,
@@ -248,7 +267,15 @@ macro restart_case(ex, cases...)
                 with_restart($(
                     [:(
                         # QuoteNode is used to transform the identifier into a symbol
-                        $(QuoteNode(parsed_cases[i].name)) => $(esc(parsed_cases[i].params)) -> exit(RestartCaseResult($i, $( esc(parsed_cases[i].params) )))
+                        $(QuoteNode(parsed_cases[i].name)) => (
+                            # The first member of the tuple is the restart callback
+                            $(esc(parsed_cases[i].params)) -> exit(RestartCaseResult($i, $( esc(parsed_cases[i].params) ))),
+                            # The rest of the members are the options
+                            $(Iterators.flatten([
+                                # Each option is represented by 2 consecutive members, one for the name and another for the value
+                                [QuoteNode(name), esc(value)]
+                            for (name, value) in parsed_cases[i].options])...)
+                        )
                     ) for i in 1:length(parsed_cases)]...
                 )) do
                     $(esc(ex))
@@ -276,11 +303,11 @@ end
 
 # Library errors
 
-struct UndefinedRestartException <: Exception
+struct UnavailableRestartException <: Exception
     name::Symbol
 end
-function Base.showerror(io::IO, e::UndefinedRestartException)
-    print(io, "UndefinedRestartException: the restart named \"$(e.name)\" is not available.")
+function Base.showerror(io::IO, e::UnavailableRestartException)
+    print(io, "UnavailableRestartException: the restart named \"$(e.name)\" is not available.")
 end
 
 
@@ -306,5 +333,5 @@ divide(a, b) = with_restart(:return_zero => (() -> 0, :test, () -> false),
                             a/b
 end
 
-export to_escape, handling, with_restart, available_restart, invoke_restart, signal, @handler_case, @restart_case, divide, UndefinedRestartException, DivisionByZero
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal, @handler_case, @restart_case, divide, UnavailableRestartException, DivisionByZero
 end

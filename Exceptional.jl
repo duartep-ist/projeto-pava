@@ -71,7 +71,7 @@ function invoke_restart(name, args...)
             return
         end
     end
-    throw(UndefinedRestartException(name))
+    throw(UnavailableRestartException(name))
 end
 
 function signal(exception::Exception)
@@ -93,14 +93,14 @@ end
 
 # Library errors
 
-struct UndefinedRestartException <: Exception
+struct UnavailableRestartException <: Exception
     name::Symbol
 end
-function Base.showerror(io::IO, e::UndefinedRestartException)
-    print(io, "UndefinedRestartException: the restart named \"$(e.name)\" is not available.")
+function Base.showerror(io::IO, e::UnavailableRestartException)
+    print(io, "UnavailableRestartException: the restart named \"$(e.name)\" is not available.")
 end
 
 
-export to_escape, handling, with_restart, available_restart, invoke_restart, signal, UndefinedRestartException
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal, UnavailableRestartException
 
 end
