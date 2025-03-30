@@ -118,7 +118,7 @@ end
 
 function available_restart(name)
     for info in Iterators.reverse(restart_stack)
-        if name in keys(info.handler_dict)
+        if name in keys(info.handler_dict) && info.handler_dict[name].test()
             return true
         end
     end
@@ -127,7 +127,7 @@ end
 
 function invoke_restart(name, args...)
     for info in Iterators.reverse(restart_stack)
-        if name in keys(info.handler_dict)
+        if name in keys(info.handler_dict) && info.handler_dict[name].test()
             info.escape(info.handler_dict[name].func(args...))
             return
         end
