@@ -19,6 +19,11 @@ struct ExceptionHandler
     handler::Function
 end
 
+struct RestartResult
+    func::Function
+    args::Tuple
+end     
+
 exception_handlers::Vector{Vector{ExceptionHandler}} = []
 restart_stack::Vector{RestartInfo} = []
 
@@ -53,7 +58,6 @@ function to_escape(func)
     end
 end
 
-
 function parse_restart(restart)
     let name = restart.first, func = nothing, test = () -> true, report = () -> (uppercase(String(restart.first))), interactive = () -> ()
         if restart.second isa Tuple # (:name, (:report, report, :interactive, interactive, :test, test))
@@ -75,8 +79,8 @@ function parse_restart(restart)
     end
 end
 
-function print_restarts(exception)
-    let restarts::Vector{Pair{Function, Restart}} = [], chosen::Union{Nothing, Pair{Function, Restart}} = nothing
+function prompt_and_invoke_restart(exception)
+    let restarts::Vector{Pair{Function, Restart}} = [], chosen::Union{Nothing, Pair{Function, Restart}} = nothing, callback
     println("Error of type: $exception")
     println("Available restarts:")
     for info in Iterators.reverse(restart_stack)
@@ -89,7 +93,8 @@ function print_restarts(exception)
     end
 
     # Retry
-    push!(restarts, restart_stack[end].escape => parse_restart(:retry => restart_stack[end].caller))
+    callback = restart_stack[begin].caller
+    push!(restarts, restart_stack[begin].escape => parse_restart(:retry => () -> with_restart(callback)))
     println("$(length(restarts)): [RETRY] Retry evaluation request.")
 
     # Abort
@@ -99,19 +104,22 @@ function print_restarts(exception)
     print("Choose one restart: ")
     chosen = restarts[parse(Int, readline())]
 
-    chosen.first(chosen.second.func(chosen.second.interactive()...))
+    chosen.first(RestartResult(chosen.second.func, chosen.second.interactive()))
     end
 end
 
 function with_restart(func, restarts...)
-    let restart_handler_dict = Dict([(r.first => parse_restart(r)) for r in restarts])
+    let restart_handler_dict = Dict([(r.first => parse_restart(r)) for r in restarts]), result = nothing
         try
-            to_escape() do escape
+            result = to_escape() do escape
                 push!(restart_stack, RestartInfo(restart_handler_dict, escape, func))
                 func()
             end
         finally
             pop!(restart_stack)
+            if result isa RestartResult
+                return result.func(result.args...)
+            end
         end
     end
 end
@@ -128,7 +136,7 @@ end
 function invoke_restart(name, args...)
     for info in Iterators.reverse(restart_stack)
         if name in keys(info.handler_dict) && info.handler_dict[name].test()
-            info.escape(info.handler_dict[name].func(args...))
+            info.escape(RestartResult(info.handler_dict[name].func, args))
             return
         end
     end
@@ -146,11 +154,10 @@ function signal(exception::Exception)
     end    
 end
 
-
 function Base.error(exception::Exception)
     signal(exception)
     if length(restart_stack) > 0
-        print_restarts(exception)
+        prompt_and_invoke_restart(exception)
     end
     throw(exception)
 end
@@ -327,7 +334,7 @@ divide(a, b) = with_restart(:return_zero => (() -> 0, :test, () -> false),
                                                                             print("Enter a denominator: ")
                                                                             b = parse(Int, readline())
                                                                             a,b
-                                                                        end))) do
+                                                                       end))) do
                             b == 0 ? 
                             error(DivisionByZero()) :
                             a/b

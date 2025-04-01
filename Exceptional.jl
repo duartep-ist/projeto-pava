@@ -10,6 +10,12 @@ struct ExceptionHandler
     handler::Function
 end
 
+struct RestartResult
+    func::Function
+    args::Tuple
+end     
+
+
 exception_handlers::Vector{Vector{ExceptionHandler}} = []
 restart_stack::Vector{RestartInfo} = []
 
@@ -43,14 +49,17 @@ function to_escape(func)
 end
 
 function with_restart(func, restarts...)
-    let restart_handler_dict = Dict(restarts)
+    let restart_handler_dict = Dict(restarts), result = nothing
         try
-            to_escape() do escape
+            result = to_escape() do escape
                 push!(restart_stack, RestartInfo(restart_handler_dict, escape))
                 func()
             end
         finally    
             pop!(restart_stack)
+            if result isa RestartResult
+                return result.func(result.args...)
+            end
         end
     end
 end
@@ -67,7 +76,7 @@ end
 function invoke_restart(name, args...)
     for info in Iterators.reverse(restart_stack)
         if name in keys(info.handler_dict)
-            info.escape(info.handler_dict[name](args...))
+            info.escape(RestartResult(info.handler_dict[name], args))
             return
         end
     end

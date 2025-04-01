@@ -123,6 +123,7 @@ reciprocal(value) =
             1/value
     end
 
+@test reciprocal(10) == 0.1
 @test handling(DivisionByZero => (c)->invoke_restart(:return_zero)) do
     reciprocal(0)
 end == 0
@@ -132,9 +133,14 @@ end == 123
 @test handling(DivisionByZero => (c)->invoke_restart(:retry_using, 10)) do
     reciprocal(0)
 end == 0.1
+@test_throws ErrorException handling(DivisionByZero => (c)->throw(ErrorException("Oops!"))) do
+    reciprocal(0)
+end
+@test length(exceptional_module.restart_stack) == 0
 @test_throws UnavailableRestartException handling(DivisionByZero => (c)->invoke_restart(:invalid, 10)) do
     reciprocal(0)
 end
+@test length(exceptional_module.restart_stack) == 0
 
 @test handling(DivisionByZero =>
     (c) -> for restart in (:return_one, :return_zero, :die_horribly)
@@ -147,9 +153,13 @@ end
 end == 0
 
 @test let count = 0
-    handling(DivisionByZero => (c) -> (count += 1; invoke_restart(:retry_using, count == 1 ? 0 : 10))) do
+    handling(DivisionByZero => (c) -> begin
+        count += 1
+        @assert length(exceptional_module.restart_stack) == 1 "Stack is growing when retrying"
+        invoke_restart(:retry_using, count < 10 ? 0 : 10)
+    end) do
         reciprocal(0)
-    end == 0.1 && count == 2
+    end == 0.1 && count == 10
 end
 
 
