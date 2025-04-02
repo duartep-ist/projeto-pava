@@ -45,6 +45,14 @@ catch e
     end
 end
 
+using Test
+
+# This represents a type of error which could be thrown by code belonging to the user of the library.
+# It isn't a subtype of Exception since that's not guaranteed for user errors.
+struct UserError
+end
+
+
 square_root(value) =
     !isa(value, Real) ?
         error(TypeError(:square_root, "", Real, value)) :
@@ -85,7 +93,9 @@ square_root(value) =
     (DomainError, (e), "Error: tried to compute the square root of $(e.val).")
 ) == "Error: tried to compute the square root of -1."
 
-# You can also add a case for when no exceptional situation occurs, which takes the result of the first expression as an argument. The no error case is identified by a literal "nothing" in the first element of the tuple.
+# You can also add a case for when no exceptional situation occurs, which takes the result of the
+# first expression as an argument. The no error case is identified by a literal "nothing" in the
+# first element of the tuple.
 @test @handler_case(
     square_root(4),
     (DomainError, (e), "Error: tried to compute the square root of $(e.val)."),
@@ -99,7 +109,9 @@ square_root(value) =
     (nothing, (result), 2)
 )
 
-# As in Common Lisp, @handler_case will stop the execution of the expression as soon as exception with its type contained in the list is signaled. This means that you can't invoke restarts from inside @handler_case.
+# As in Common Lisp, @handler_case will stop the execution of the expression as soon as an
+# exception with its type contained in the list is signaled. This means that you can't invoke
+# restarts from inside @handler_case.
 @test_throws UnavailableRestartException @handler_case(
     square_root(-1),
     (DomainError, (), invoke_restart(:return_zero))
@@ -153,6 +165,11 @@ end
     expr_eval_count == 1 && type_eval_count == 1
 end
 
+# Julia thrown exceptions that happen during the evaluation of the exception types are propagated.
+@test_throws UserError @handler_case(
+    123,
+    (throw(UserError()), (), nothing)
+)
 
 
 # The @restart_case macro
@@ -165,6 +182,7 @@ function square_root_vector_restartable(input)
         push!(output, @restart_case(
             square_root(value),
             (replace_with, (v), v),
+            (omit, (), continue),
             (stop, (), break),
             (give_up, (), return "Error!")
         ))
@@ -176,6 +194,9 @@ end
 @test handling(DomainError => (c)->invoke_restart(:replace_with, "Oh no!")) do
     square_root_vector_restartable([0, -1, 4])
 end == [0, "Oh no!", 2]
+@test handling(DomainError => (c)->invoke_restart(:omit)) do
+    square_root_vector_restartable([0, -1, 4])
+end == [0, 2]
 @test handling(DomainError => (c)->invoke_restart(:stop)) do
     square_root_vector_restartable([0, -1, 4])
 end == [0]
@@ -223,6 +244,39 @@ end
 @test_throws MethodError handling(DivisionByZero => (c)->invoke_restart(:retry_using, 1, 2, 3)) do
     divide(2, 0)
 end
+
+# You can put options in any order you want.
+@test handling(DivisionByZero => (c)->invoke_restart(:a)) do
+    @restart_case(
+        signal(DivisionByZero()),
+        (report = ()->"Return 123", a, (), 123)
+    )
+end == 123
+@test handling(DivisionByZero => (c)->invoke_restart(:a)) do
+    @restart_case(
+        signal(DivisionByZero()),
+        (a, report = ()->"Return 123", (), 123)
+    )
+end == 123
+@test handling(DivisionByZero => (c)->invoke_restart(:a)) do
+    @restart_case(
+        signal(DivisionByZero()),
+        (a, (), report = ()->"Return 123", 123)
+    )
+end == 123
+@test handling(DivisionByZero => (c)->invoke_restart(:a)) do
+    @restart_case(
+        signal(DivisionByZero()),
+        (a, (), 123, report = ()->"Return 123")
+    )
+end == 123
+
+# Julia thrown exceptions that happen during the evaluation of the options are propagated.
+@test_throws UserError @restart_case(
+    123,
+    (a, (), nothing, report = throw(UserError()))
+)
+
 
 # handling(DivisionByZero => (c)->invoke_restart(:return_value, "Error!")) do
 #     divide(2, 0)

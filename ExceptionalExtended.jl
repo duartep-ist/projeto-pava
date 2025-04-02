@@ -262,7 +262,7 @@ macro restart_case(ex, cases...)
 
         RestartCaseParsedCase(
             positional_args[1],
-            bare_identifier_to_tuple(case.args[2]),
+            bare_identifier_to_tuple(positional_args[2]),
             positional_args[3],
             options
         )

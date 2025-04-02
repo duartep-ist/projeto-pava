@@ -11,6 +11,12 @@ end
 
 using Test
 
+# This represents a type of error which could be thrown by code belonging to the user of the library.
+# It isn't a subtype of Exception since that's not guaranteed for user errors.
+struct UserError
+end
+
+
 # Escaping
 
 mystery(n) =
@@ -33,10 +39,17 @@ end
 @test mystery(1) == 2
 @test mystery(2) == 4
 
+@test_throws UserError to_escape() do escape
+    throw(UserError())
+end
+
 
 # Handling
 
 @test handling(() -> 123) == 123
+@test_throws UserError handling() do
+    throw(UserError())
+end
 
 struct DivisionByZero <: Exception
 end
@@ -112,11 +125,16 @@ end
 
 # Restarts
 
+@test_throws UserError with_restart() do
+    throw(UserError())
+end
+
 reciprocal(value) =
     with_restart(
         :return_zero => ()->0,
         :return_value => identity,
-        :retry_using => reciprocal
+        :retry_using => reciprocal,
+        :throw => ()->throw(UserError())
     ) do
         value == 0 ?
             error(DivisionByZero()) :
@@ -133,7 +151,10 @@ end == 123
 @test handling(DivisionByZero => (c)->invoke_restart(:retry_using, 10)) do
     reciprocal(0)
 end == 0.1
-@test_throws ErrorException handling(DivisionByZero => (c)->throw(ErrorException("Oops!"))) do
+@test_throws UserError handling(DivisionByZero => (c)->invoke_restart(:throw)) do
+    reciprocal(0)
+end
+@test_throws UserError handling(DivisionByZero => (c)->throw(UserError())) do
     reciprocal(0)
 end
 @test length(exceptional_module.restart_stack) == 0
@@ -152,6 +173,7 @@ end
     reciprocal(0)
 end == 0
 
+# When the restart code calls with_restart() again, the restart stack shouldn't grow.
 @test let count = 0
     handling(DivisionByZero => (c) -> begin
         count += 1
