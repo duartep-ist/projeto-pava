@@ -27,6 +27,8 @@ end
 exception_handlers::Vector{Vector{ExceptionHandler}} = []
 restart_stack::Vector{RestartInfo} = []
 
+repl_w_retry_enabled::Bool = false
+
 function handling(func, handlers...)
     let handler_list = [ExceptionHandler(h.first, h.second) for h in handlers]
         push!(exception_handlers, handler_list)
@@ -81,30 +83,32 @@ end
 
 function prompt_and_invoke_restart(exception)
     let restarts::Vector{Pair{Function, Restart}} = [], chosen::Union{Nothing, Pair{Function, Restart}} = nothing, callback
-    println("Error of type: $exception")
-    println("Available restarts:")
-    for info in Iterators.reverse(restart_stack)
-        for r in info.restarts
-            if r.test()
-                push!(restarts, Pair(info.escape, r))
-                println("$(length(restarts)): [$(uppercase(String(r.name)))] $(r.report())")
+        println("Error of type: $exception")
+        println("Available restarts:")
+        for info in Iterators.reverse(restart_stack)
+            for r in info.restarts
+                if r.test()
+                    push!(restarts, Pair(info.escape, r))
+                    println("$(length(restarts)): [$(uppercase(String(r.name)))] $(r.report())")
+                end
             end
         end
-    end
 
-    # Retry
-    callback = restart_stack[begin].caller
-    push!(restarts, restart_stack[begin].escape => parse_restart(:retry => () -> with_restart(callback)))
-    println("$(length(restarts)): [RETRY] Retry evaluation request.")
+        if repl_w_retry_enabled
+            # Retry
+            callback = restart_stack[begin].caller
+            push!(restarts, restart_stack[begin].escape => parse_restart(:retry => () -> with_restart(callback)))
+            println("$(length(restarts)): [RETRY] Retry evaluation request.")
 
-    # Abort
-    push!(restarts, restart_stack[begin].escape => parse_restart(:abort => () -> (throw(exception))))
-    println("$(length(restarts)): [ABORT] Abort entirely from this Julia process.")
+            # Abort
+            push!(restarts, restart_stack[begin].escape => parse_restart(:abort => () -> (throw(exception))))
+            println("$(length(restarts)): [ABORT] Abort entirely from this Julia process.")
+        end
 
-    print("Choose one restart: ")
-    chosen = restarts[parse(Int, readline())]
+        print("Choose one restart: ")
+        chosen = restarts[parse(Int, readline())]
 
-    chosen.first(RestartResult(chosen.second.func, chosen.second.interactive()))
+        chosen.first(RestartResult(chosen.second.func, chosen.second.interactive()))
     end
 end
 
@@ -321,28 +325,27 @@ function Base.showerror(io::IO, e::UnavailableRestartException)
     print(io, "UnavailableRestartException: the restart named \"$(e.name)\" is not available.")
 end
 
-
-# Example
-struct DivisionByZero <: Exception end
-
-divide(a, b) = with_restart(:return_zero => (() -> 0, :test, () -> false),
-                            :return_value => (identity, :interactive, ()->(let ret::String
-                                                                               print("Enter a return value: ")
-                                                                               ret = readline()
-                                                                               (ret,)
-                                                                           end)),
-                            :retry_using => (divide, :report, ()->"Retry using another numerator and denominator",
-                                                     :interactive, ()->(let a::Int, b::Int
-                                                                            print("Enter a numerator: ")
-                                                                            a = parse(Int, readline())
-                                                                            print("Enter a denominator: ")
-                                                                            b = parse(Int, readline())
-                                                                            a,b
-                                                                       end))) do
-                            b == 0 ? 
-                            error(DivisionByZero()) :
-                            a/b
+function repl_w_retry()
+    while true
+        l = Meta.parse(readline())
+        println(with_restart() do
+            eval(l)
+        end)
+    end
 end
 
-export to_escape, handling, with_restart, available_restart, invoke_restart, signal, @handler_case, @restart_case, divide, UnavailableRestartException, DivisionByZero
+function prompt_retry()
+    println("Do you want to use default restarts?\n[0] No \n[1] Yes")
+    if Bool(parse(Int,readline()))
+        global repl_w_retry_enabled = true
+        println("Default restarts enabled.")
+        repl_w_retry()
+    else
+        println("Default restarts disabled.")
+    end
+end
+
+prompt_retry()
+
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal, @handler_case, @restart_case, UnavailableRestartException, DivisionByZero, repl_w_retry
 end

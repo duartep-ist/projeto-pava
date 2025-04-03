@@ -1,4 +1,7 @@
+Base.stdin = IOBuffer("0")
 include("ExceptionalExtended.jl")
+
+
 using .ExceptionalExtended
 
 exceptional_module = ExceptionalExtended
