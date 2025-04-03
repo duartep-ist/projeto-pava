@@ -9,7 +9,7 @@ struct Restart
 end
 
 struct RestartInfo
-    handler_dict::Dict{Symbol, Restart}
+    restarts::Vector{Restart}
     escape::Function
     caller::Function
 end
@@ -84,7 +84,7 @@ function prompt_and_invoke_restart(exception)
     println("Error of type: $exception")
     println("Available restarts:")
     for info in Iterators.reverse(restart_stack)
-        for r in values(info.handler_dict)
+        for r in info.restarts
             if r.test()
                 push!(restarts, Pair(info.escape, r))
                 println("$(length(restarts)): [$(uppercase(String(r.name)))] $(r.report())")
@@ -109,10 +109,10 @@ function prompt_and_invoke_restart(exception)
 end
 
 function with_restart(func, restarts...)
-    let restart_handler_dict = Dict([(r.first => parse_restart(r)) for r in restarts]), result = nothing
+    let restart_handlers = [parse_restart(r) for r in restarts], result = nothing
         try
             result = to_escape() do escape
-                push!(restart_stack, RestartInfo(restart_handler_dict, escape, func))
+                push!(restart_stack, RestartInfo(restart_handlers, escape, func))
                 func()
             end
         finally
@@ -125,19 +125,23 @@ function with_restart(func, restarts...)
 end
 
 function available_restart(name)
-    for info in Iterators.reverse(restart_stack)
-        if name in keys(info.handler_dict) && info.handler_dict[name].test()
-            return true
+    for info in reverse(restart_stack)
+        let idx = findfirst(r -> r.name == name && r.test(), info.restarts)
+            if !isnothing(idx)
+                return true
+            end
         end
     end
     false
 end
 
 function invoke_restart(name, args...)
-    for info in Iterators.reverse(restart_stack)
-        if name in keys(info.handler_dict) && info.handler_dict[name].test()
-            info.escape(RestartResult(info.handler_dict[name].func, args))
-            return
+    for info in reverse(restart_stack)
+        let idx = findfirst(r -> r.name == name && r.test(), info.restarts)
+            if !isnothing(idx)
+                info.escape(RestartResult(info.restarts[idx].func, args))
+                return
+            end
         end
     end
     throw(UnavailableRestartException(name))
@@ -325,7 +329,7 @@ divide(a, b) = with_restart(:return_zero => (() -> 0, :test, () -> false),
                             :return_value => (identity, :interactive, ()->(let ret::String
                                                                                print("Enter a return value: ")
                                                                                ret = readline()
-                                                                               ret
+                                                                               (ret,)
                                                                            end)),
                             :retry_using => (divide, :report, ()->"Retry using another numerator and denominator",
                                                      :interactive, ()->(let a::Int, b::Int
