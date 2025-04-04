@@ -113,7 +113,7 @@ function prompt_and_invoke_restart(exception)
 end
 
 function with_restart(func, restarts...)
-    let restart_handler_dict = Dict([(r.first => parse_restart(r)) for r in restarts]), result = nothing
+    let restart_handler_dict = Dict(Iterators.reverse([(r.first => parse_restart(r)) for r in restarts])), result = nothing
         try
             result = to_escape() do escape
                 push!(restart_stack, RestartInfo(restart_handler_dict, escape, func))

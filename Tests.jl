@@ -184,6 +184,16 @@ end == 0
     end == 0.1 && count == 10
 end
 
+# If there are multiple restarts with the same name in the same call to `with_restart()`, the first one takes priority.
+@test handling(DivisionByZero => (c)->invoke_restart(:a)) do
+    with_restart(
+        :a => ()->1,
+        :a => ()->2
+    ) do
+        error(DivisionByZero())
+    end
+end == 1
+
 
 # From exceptions.pdf, page 20
 function print_line_restart(str, signal_func, line_end=20)

@@ -49,7 +49,7 @@ function to_escape(func)
 end
 
 function with_restart(func, restarts...)
-    let restart_handler_dict = Dict(restarts), result = nothing
+    let restart_handler_dict = Dict(Iterators.reverse(restarts)), result = nothing
         try
             result = to_escape() do escape
                 push!(restart_stack, RestartInfo(restart_handler_dict, escape))
