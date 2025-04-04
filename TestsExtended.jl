@@ -206,8 +206,8 @@ end == "Error!"
 
 
 # Like with_restart, @restart_case supports several parameters in each case, as well as restart options, such as test, report, and interactive.
-struct DivisionByZero <: Exception
-end
+abstract type ArithmeticError <: Exception end
+struct DivisionByZero <: ArithmeticError end
 divide(dividend, divisor) =
     @restart_case(
         divisor == 0 ?

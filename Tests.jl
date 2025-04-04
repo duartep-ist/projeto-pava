@@ -39,6 +39,7 @@ end
 @test mystery(1) == 2
 @test mystery(2) == 4
 
+# Julia errors should are properly propagated.
 @test_throws UserError to_escape() do escape
     throw(UserError())
 end
@@ -51,8 +52,8 @@ end
     throw(UserError())
 end
 
-struct DivisionByZero <: Exception
-end
+abstract type ArithmeticError <: Exception end
+struct DivisionByZero <: ArithmeticError end
 
 simple_reciprocal(x) = x == 0 ? error(DivisionByZero()) : 1/x
 
@@ -62,15 +63,41 @@ simple_reciprocal(x) = x == 0 ? error(DivisionByZero()) : 1/x
     end
 end
 
-@test let saw0 = false, saw1 = false
+# Julia errors should are properly propagated.
+@test_throws UserError handling(DivisionByZero => (c)->throw(UserError())) do
+    simple_reciprocal(0)
+end
+
+# Handlers are executed in order from the innermost to the outermost.
+@test let count = 0
     to_escape() do exit
-        handling(DivisionByZero => (c) -> (saw0 = true; exit(true))) do
-            handling(DivisionByZero => (c) -> (saw1 = true)) do
+        handling(DivisionByZero => (c) -> (@assert count == 1; count += 1; exit(true))) do
+            handling(DivisionByZero => (c) -> (@assert count == 0; count += 1)) do
                 simple_reciprocal(0)
             end
         end
     end
-    saw0 && saw1
+    count == 2
+end
+
+# If multiple handlers in the same call to handling() match the error, only first matching handler gets executed.
+@test let count = 0
+    handling(
+        DivisionByZero => (c) -> (@assert count == 0; count += 1),
+        ArithmeticError => (c) -> @assert false
+    ) do
+        signal(DivisionByZero())
+    end
+    count == 1
+end
+@test let count = 0
+    handling(
+        ArithmeticError => (c) -> (@assert count == 0; count += 1),
+        DivisionByZero => (c) -> @assert false
+    ) do
+        signal(DivisionByZero())
+    end
+    count == 1
 end
 
 
@@ -154,9 +181,6 @@ end == 0.1
 @test_throws UserError handling(DivisionByZero => (c)->invoke_restart(:throw)) do
     reciprocal(0)
 end
-@test_throws UserError handling(DivisionByZero => (c)->throw(UserError())) do
-    reciprocal(0)
-end
 @test length(exceptional_module.restart_stack) == 0
 @test_throws UnavailableRestartException handling(DivisionByZero => (c)->invoke_restart(:invalid, 10)) do
     reciprocal(0)
@@ -184,7 +208,7 @@ end == 0
     end == 0.1 && count == 10
 end
 
-# If there are multiple restarts with the same name in the same call to `with_restart()`, the first one takes priority.
+# If there are multiple restarts with the same name in the same call to with_restart(), the first one takes priority.
 @test handling(DivisionByZero => (c)->invoke_restart(:a)) do
     with_restart(
         :a => ()->1,
@@ -263,3 +287,16 @@ end == [1, 0, 1/2]
 @test handling(DivisionByZero => (c) -> invoke_restart(:skip)) do
     reciprocal_vector([1, 0, 2])
 end == [1, 1/2]
+
+# If there are multiple restarts with the same name in nested calls to with_restart(), the innermost one takes priority.
+@test handling(DivisionByZero => (c)->invoke_restart(:a)) do
+    with_restart(
+        :a => ()->"outer"
+    ) do
+        with_restart(
+            :a => ()->"inner"
+        ) do
+            error(DivisionByZero())
+        end
+    end
+end == "inner"
