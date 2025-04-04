@@ -9,7 +9,7 @@ struct Restart
 end
 
 struct RestartInfo
-    restarts::Vector{Restart}
+    restarts::Dict{Symbol, Restart}
     escape::Function
     caller::Function
 end
@@ -86,7 +86,7 @@ function prompt_and_invoke_restart(exception)
         println("Error of type: $exception")
         println("Available restarts:")
         for info in Iterators.reverse(restart_stack)
-            for r in info.restarts
+            for r in values(info.restarts)
                 if r.test()
                     push!(restarts, Pair(info.escape, r))
                     println("$(length(restarts)): [$(uppercase(String(r.name)))] $(r.report())")
@@ -113,10 +113,10 @@ function prompt_and_invoke_restart(exception)
 end
 
 function with_restart(func, restarts...)
-    let restart_handlers = [parse_restart(r) for r in restarts], result = nothing
+    let restart_handler_dict = Dict([(r.first => parse_restart(r)) for r in restarts]), result = nothing
         try
             result = to_escape() do escape
-                push!(restart_stack, RestartInfo(restart_handlers, escape, func))
+                push!(restart_stack, RestartInfo(restart_handler_dict, escape, func))
                 func()
             end
         finally
@@ -129,23 +129,19 @@ function with_restart(func, restarts...)
 end
 
 function available_restart(name)
-    for info in reverse(restart_stack)
-        let idx = findfirst(r -> r.name == name && r.test(), info.restarts)
-            if !isnothing(idx)
-                return true
-            end
+    for info in Iterators.reverse(restart_stack)
+        if name in keys(info.restarts) && info.restarts[name].test()
+            return true
         end
     end
     false
 end
 
 function invoke_restart(name, args...)
-    for info in reverse(restart_stack)
-        let idx = findfirst(r -> r.name == name && r.test(), info.restarts)
-            if !isnothing(idx)
-                info.escape(RestartResult(info.restarts[idx].func, args))
-                return
-            end
+    for info in Iterators.reverse(restart_stack)
+        if name in keys(info.restarts) && info.restarts[name].test()
+            info.escape(RestartResult(info.restarts[name].func, args))
+            return
         end
     end
     throw(UnavailableRestartException(name))

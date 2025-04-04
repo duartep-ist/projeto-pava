@@ -1,12 +1,7 @@
 module Exceptional
 
-struct Restart
-    name::Symbol
-    func::Function
-end
-
 struct RestartInfo
-    restarts::Vector{Restart}
+    restarts::Dict{Symbol, Function}
     escape::Function
 end
 
@@ -54,10 +49,10 @@ function to_escape(func)
 end
 
 function with_restart(func, restarts...)
-    let restart_handlers = [Restart(r.first, r.second) for r in restarts], result = nothing
+    let restart_handler_dict = Dict(restarts), result = nothing
         try
             result = to_escape() do escape
-                push!(restart_stack, RestartInfo(restart_handlers, escape))
+                push!(restart_stack, RestartInfo(restart_handler_dict, escape))
                 func()
             end
         finally    
@@ -70,23 +65,19 @@ function with_restart(func, restarts...)
 end
 
 function available_restart(name)
-    for info in reverse(restart_stack)
-        let idx = findfirst(r -> r.name == name, info.restarts)
-            if !isnothing(idx)
-                return true
-            end
+    for info in Iterators.reverse(restart_stack)
+        if name in keys(info.restarts)
+            return true
         end
     end
     false
 end
 
 function invoke_restart(name, args...)
-    for info in reverse(restart_stack)
-        let idx = findfirst(r -> r.name == name, info.restarts)
-            if !isnothing(idx)
-                info.escape(RestartResult(info.restarts[idx].func, args))
-                return
-            end
+    for info in Iterators.reverse(restart_stack)
+        if name in keys(info.restarts)
+            info.escape(RestartResult(info.restarts[name], args))
+            return
         end
     end
     throw(UnavailableRestartException(name))
