@@ -13,7 +13,7 @@ end
 struct RestartResult
     func::Function
     args::Tuple
-end     
+end
 
 
 exception_handlers::Vector{Vector{ExceptionHandler}} = []
@@ -55,7 +55,7 @@ function with_restart(func, restarts...)
                 push!(restart_stack, RestartInfo(restart_handler_dict, escape))
                 func()
             end
-        finally    
+        finally
             pop!(restart_stack)
             if result isa RestartResult
                 return result.func(result.args...)
@@ -84,7 +84,7 @@ function invoke_restart(name, args...)
 end
 
 function signal(exception::Exception)
-    for handler_frame in reverse(exception_handlers)
+    for handler_frame in Iterators.reverse(exception_handlers)
         for handler in handler_frame
             if exception isa handler.exception
                 handler.handler(exception)

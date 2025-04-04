@@ -10,7 +10,7 @@ let output, result = to_escape() do exit
         handling(
             DomainError => ((exception,)-> exit(HandlerCaseResult(1, exception))),
             TypeError => ((exception,)->exit(HandlerCaseResult(2, exception)))
-        ) do 
+        ) do
             square_root(4)
         end
     end

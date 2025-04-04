@@ -22,7 +22,7 @@ end
 struct RestartResult
     func::Function
     args::Tuple
-end     
+end
 
 exception_handlers::Vector{Vector{ExceptionHandler}} = []
 restart_stack::Vector{RestartInfo} = []
@@ -148,14 +148,14 @@ function invoke_restart(name, args...)
 end
 
 function signal(exception::Exception)
-    for handler_frame in reverse(exception_handlers)
+    for handler_frame in Iterators.reverse(exception_handlers)
         for handler in handler_frame
             if exception isa handler.exception
                 handler.handler(exception)
                 break
             end
         end
-    end    
+    end
 end
 
 function Base.error(exception::Exception)

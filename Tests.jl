@@ -106,7 +106,7 @@ end
 
 function print_line(str, signal_func, line_end=20)
     global text = ""
-    let col = 0 
+    let col = 0
         for c in str
             text *= c
             col += 1
@@ -222,7 +222,7 @@ end == 1
 # From exceptions.pdf, page 20
 function print_line_restart(str, signal_func, line_end=20)
     global text = ""
-    let col = 0 
+    let col = 0
         for c in str
             text *= c
             col += 1
