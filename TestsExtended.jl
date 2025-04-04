@@ -18,7 +18,7 @@ end
 
 
 square_root(value) =
-    !isa(value, Real) ?
+    !(value isa Real) ?
         error(TypeError(:square_root, "", Real, value)) :
         value < 0 ?
             error(DomainError(value)) :
@@ -54,15 +54,15 @@ square_root(value) =
 # You can add a parameter to use the exception object within the expression.
 @test @handler_case(
     square_root(-1),
-    (DomainError, (e), "Error: tried to compute the square root of $(e.val).")
-) == "Error: tried to compute the square root of -1."
+    (DomainError, (e), "Error: can't compute the square root of $(e.val).")
+) == "Error: can't compute the square root of -1."
 
 # You can also add a case for when no exceptional situation occurs, which takes the result of the
 # first expression as an argument. The no error case is identified by a literal "nothing" in the
 # first element of the tuple.
 @test @handler_case(
     square_root(4),
-    (DomainError, (e), "Error: tried to compute the square root of $(e.val)."),
+    (DomainError, (e), "Error: can't compute the square root of $(e.val)."),
     (nothing, (result), "The result is $(result)!")
 ) == "The result is 2.0!"
 

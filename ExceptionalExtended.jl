@@ -28,6 +28,7 @@ handling_stack::Vector{Vector{ExceptionHandler}} = []
 restart_stack::Vector{RestartInfo} = []
 
 repl_with_retry_enabled::Bool = false
+should_abort_from_repl::Bool = false
 
 function handling(func, handlers...)
     let handler_list = [ExceptionHandler(h.first, h.second) for h in handlers]
@@ -82,7 +83,7 @@ function parse_restart(restart)
 end
 
 function prompt_and_invoke_restart(exception)
-    let restarts::Vector{Pair{Function, Restart}} = [], chosen::Union{Nothing, Pair{Function, Restart}}
+    let restarts::Vector{Pair{Function, Restart}} = [], chosen::Union{Nothing, Pair{Function, Restart}}, callback
         println("Error of type: $exception")
         println("Available restarts:")
         for info in Iterators.reverse(restart_stack)
@@ -100,9 +101,13 @@ function prompt_and_invoke_restart(exception)
             push!(restarts, restart_stack[begin].escape => parse_restart(:retry => () -> with_restart(callback)))
             println("$(length(restarts)): [RETRY] Retry evaluation request.")
 
+            # Abort operation
+            push!(restarts, restart_stack[begin].escape => parse_restart(:abort_operation => () -> (throw(exception))))
+            println("$(length(restarts)): [*ABORT] Abort current operation.")
+
             # Abort
-            push!(restarts, restart_stack[begin].escape => parse_restart(:abort => () -> (throw(exception))))
-            println("$(length(restarts)): [ABORT] Abort entirely from this Julia process.")
+            push!(restarts, restart_stack[begin].escape => parse_restart(:abort => () -> (global should_abort_from_repl = true; throw(exception))))
+            println("$(length(restarts)): [ABORT] Abort entirely from REPL.")
         end
        
         print("Choose one restart: ")
@@ -352,6 +357,9 @@ function start_repl(eval)
             showerror(stderr, e)
             Base.show_backtrace(stdout, catch_backtrace())
             println("")
+        end
+        if should_abort_from_repl
+            return
         end
     end
 end
