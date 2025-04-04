@@ -24,18 +24,18 @@ struct RestartResult
     args::Tuple
 end
 
-exception_handlers::Vector{Vector{ExceptionHandler}} = []
+handling_stack::Vector{Vector{ExceptionHandler}} = []
 restart_stack::Vector{RestartInfo} = []
 
 repl_with_retry_enabled::Bool = false
 
 function handling(func, handlers...)
     let handler_list = [ExceptionHandler(h.first, h.second) for h in handlers]
-        push!(exception_handlers, handler_list)
+        push!(handling_stack, handler_list)
         try
             func()
         finally
-            pop!(exception_handlers)
+            pop!(handling_stack)
         end
     end
 end
@@ -148,7 +148,7 @@ function invoke_restart(name, args...)
 end
 
 function signal(exception::Exception)
-    for handler_frame in Iterators.reverse(exception_handlers)
+    for handler_frame in Iterators.reverse(handling_stack)
         for handler in handler_frame
             if exception isa handler.exception
                 handler.handler(exception)
