@@ -27,6 +27,8 @@ end
 exception_handlers::Vector{Vector{ExceptionHandler}} = []
 restart_stack::Vector{RestartInfo} = []
 
+repl_with_retry_enabled::Bool = false
+
 function handling(func, handlers...)
     let handler_list = [ExceptionHandler(h.first, h.second) for h in handlers]
         push!(exception_handlers, handler_list)
@@ -92,6 +94,17 @@ function prompt_and_invoke_restart(exception)
             end
         end
 
+        if repl_with_retry_enabled
+            # Retry
+            callback = restart_stack[begin].caller
+            push!(restarts, restart_stack[begin].escape => parse_restart(:retry => () -> with_restart(callback)))
+            println("$(length(restarts)): [RETRY] Retry evaluation request.")
+
+            # Abort
+            push!(restarts, restart_stack[begin].escape => parse_restart(:abort => () -> (throw(exception))))
+            println("$(length(restarts)): [ABORT] Abort entirely from this Julia process.")
+        end
+       
         print("Choose one restart: ")
         chosen = restarts[parse(Int, readline())]
 
@@ -322,5 +335,26 @@ function Base.showerror(io::IO, e::UnavailableRestartException)
     print(io, "UnavailableRestartException: the restart named \"$(e.name)\" is not available.")
 end
 
-export to_escape, handling, with_restart, available_restart, invoke_restart, signal, transform_errors, @handler_case, @restart_case, UnavailableRestartException
+
+# REPL
+
+function start_repl(eval)
+    global repl_with_retry_enabled = true
+    while true
+        print("> ")
+        code = Meta.parse(readline())
+        try
+            println(with_restart() do
+                eval(code)
+            end)
+        catch e
+            print("ERROR: ")
+            showerror(stderr, e)
+            Base.show_backtrace(stdout, catch_backtrace())
+            println("")
+        end
+    end
+end
+
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal, transform_errors, @handler_case, @restart_case, UnavailableRestartException, start_repl
 end

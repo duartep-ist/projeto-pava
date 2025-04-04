@@ -242,7 +242,7 @@ end == 123
 )
 
 
-# transform_errors
+# transform_errors()
 
 square_root_2(x) = transform_errors() do
     sqrt(x)
