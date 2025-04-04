@@ -242,6 +242,23 @@ end == 123
 )
 
 
+# transform_errors
+
+square_root_2(x) = transform_errors() do
+    sqrt(x)
+end
+
+@test @handler_case(
+    square_root_2(4),
+    (DomainError, (), "Domain error!"),
+) == 2
+@test @handler_case(
+    square_root_2(-1),
+    (DomainError, (), "Domain error!"),
+) == "Domain error!"
+
+
+
 # handling(DivisionByZero => (c)->invoke_restart(:return_value, "Error!")) do
 #     divide(2, 0)
 # end

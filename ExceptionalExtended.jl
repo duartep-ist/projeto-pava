@@ -154,6 +154,20 @@ function Base.error(exception::Exception)
 end
 
 
+# Utilities
+
+function transform_errors(func::Function)
+    try
+        func()
+    catch e
+        if !(e isa Exception)
+            rethrow()
+        end
+        error(e)
+    end
+end
+
+
 # Macros
 
 function verify_single_param_list(ex)
@@ -308,5 +322,5 @@ function Base.showerror(io::IO, e::UnavailableRestartException)
     print(io, "UnavailableRestartException: the restart named \"$(e.name)\" is not available.")
 end
 
-export to_escape, handling, with_restart, available_restart, invoke_restart, signal, @handler_case, @restart_case, UnavailableRestartException
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal, transform_errors, @handler_case, @restart_case, UnavailableRestartException
 end
