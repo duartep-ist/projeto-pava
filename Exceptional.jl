@@ -1,23 +1,21 @@
 module Exceptional
 
-struct RestartInfo
-    restarts::Dict{Symbol, Function}
-    escape::Function
-end
-
 struct ExceptionHandler
     exception::DataType
     handler::Function
 end
+handling_stack::Vector{Vector{ExceptionHandler}} = []
+
+struct RestartInfo
+    restarts::Dict{Symbol, Function}
+    escape::Function
+end
+restart_stack::Vector{RestartInfo} = []
 
 struct RestartResult
     func::Function
     args::Tuple
 end
-
-
-handling_stack::Vector{Vector{ExceptionHandler}} = []
-restart_stack::Vector{RestartInfo} = []
 
 function handling(func, handlers...)
     let handler_list = [ExceptionHandler(h.first, h.second) for h in handlers]

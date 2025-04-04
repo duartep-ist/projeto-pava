@@ -1,5 +1,11 @@
 module ExceptionalExtended
 
+struct ExceptionHandler
+    exception::DataType
+    handler::Function
+end
+handling_stack::Vector{Vector{ExceptionHandler}} = []
+
 struct Restart
     name::Symbol
     func::Function
@@ -7,25 +13,18 @@ struct Restart
     report::Function
     interactive::Function
 end
-
 struct RestartInfo
     restarts::Dict{Symbol, Restart}
     escape::Function
     caller::Function
 end
-
-struct ExceptionHandler
-    exception::DataType
-    handler::Function
-end
+restart_stack::Vector{RestartInfo} = []
 
 struct RestartResult
     func::Function
     args::Tuple
 end
 
-handling_stack::Vector{Vector{ExceptionHandler}} = []
-restart_stack::Vector{RestartInfo} = []
 
 repl_with_retry_enabled::Bool = false
 should_abort_from_repl::Bool = false
@@ -174,11 +173,11 @@ end
 
 # Utilities
 
-function transform_errors(func::Function)
+function throw_to_error(func::Function)
     try
         func()
     catch e
-        if !(e isa Exception)
+        if !(e isa Exception) # our library only allows exceptions
             rethrow()
         end
         error(e)
@@ -364,5 +363,5 @@ function start_repl(eval)
     end
 end
 
-export to_escape, handling, with_restart, available_restart, invoke_restart, signal, transform_errors, @handler_case, @restart_case, UnavailableRestartException, start_repl
+export to_escape, handling, with_restart, available_restart, invoke_restart, signal, throw_to_error, @handler_case, @restart_case, UnavailableRestartException, start_repl
 end

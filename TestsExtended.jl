@@ -46,7 +46,7 @@ square_root(value) =
     (TypeError, (), "Type error!")
 ) == "Domain error!"
 @test @handler_case(
-    square_root(""),
+    square_root("hello"),
     (DomainError, (), "Domain error!"),
     (TypeError, (), "Type error!")
 ) == "Type error!"
@@ -242,26 +242,29 @@ end == 123
 )
 
 
-# transform_errors()
+# throw_to_error()
 
-square_root_2(x) = transform_errors() do
+square_root_2(x) = throw_to_error() do
     sqrt(x)
 end
 
 @test @handler_case(
     square_root_2(4),
     (DomainError, (), "Domain error!"),
+    (MethodError, (), "Type error!")
 ) == 2
 @test @handler_case(
     square_root_2(-1),
     (DomainError, (), "Domain error!"),
+    (MethodError, (), "Type error!")
 ) == "Domain error!"
+@test @handler_case(
+    square_root_2("hello"),
+    (DomainError, (), "Domain error!"),
+    (MethodError, (), "Type error!")
+) == "Type error!"
 
-
-
-# handling(DivisionByZero => (c)->invoke_restart(:return_value, "Error!")) do
-#     divide(2, 0)
-# end
-# @test handling(DivisionByZero => (c)->invoke_restart(:return_value, -1)) do
-#     divide(2, 0)
-# end == -1
+# throw_to_error() only transforms types derived from Exception.
+@test_throws String throw_to_error() do
+    throw("string")
+end
