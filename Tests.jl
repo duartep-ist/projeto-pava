@@ -212,7 +212,7 @@ end
 @test handling(DivisionByZero => (c)->invoke_restart(:a)) do
     with_restart(
         :a => ()->1,
-        :a => ()->2
+        :a => ()->@assert false
     ) do
         error(DivisionByZero())
     end
@@ -291,7 +291,7 @@ end == [1, 1/2]
 # If there are multiple restarts with the same name in nested calls to with_restart(), the innermost one takes priority.
 @test handling(DivisionByZero => (c)->invoke_restart(:a)) do
     with_restart(
-        :a => ()->"outer"
+        :a => ()->@assert false
     ) do
         with_restart(
             :a => ()->"inner"

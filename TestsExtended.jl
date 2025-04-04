@@ -1,39 +1,3 @@
-#=
-println(@macroexpand @handler_case(
-    square_root(4),
-    (DomainError, (), "Domain error!"),
-    (TypeError, (), "Type error!")
-) == 2)
-
-
-let output, result = to_escape() do exit
-        handling(
-            DomainError => ((exception,)-> exit(HandlerCaseResult(1, exception))),
-            TypeError => ((exception,)->exit(HandlerCaseResult(2, exception)))
-        ) do
-            square_root(4)
-        end
-    end
-
-    if typeof(result) == HandlerCaseResult
-        if (result).index == 1
-            output = let () = (result).exception
-                    "Domain error!"
-                end
-        end
-        if (result).index == 2
-            output = let () = (result).exception
-                    "Type error!"
-                end
-        end
-    else
-        output = result
-    end
-    output
-end == 2
-=#
-
-
 try
     @macroexpand @handler_case(nothing)
 catch e
